@@ -1,0 +1,30 @@
+manifestVersion: 1
+id: my-store-paperclip
+name: Paperclip
+tagline: Orchestrate teams of AI agents from your Umbrel
+icon: https://github.com/paperclipai.png
+category: Development
+version: "1.0.0"
+port: 3100
+description: >-
+  Paperclip is an agent orchestration framework for running AI companies,
+  workflows, and multi-agent teams from a shared control plane.
+
+
+  This Umbrel app uses the official Paperclip Docker image. That image includes
+  the Codex CLI preinstalled, so you can configure Paperclip's `codex_local`
+  adapter after startup by providing an OpenAI API key.
+developer: Paperclip
+website: https://github.com/paperclipai/paperclip
+submitter: jocowhite
+submission: https://github.com/paperclipai/paperclip
+repo: https://github.com/paperclipai/paperclip
+support: https://github.com/paperclipai/paperclip/issues
+gallery: []
+releaseNotes: >-
+  Initial Umbrel package for Paperclip using the official container image with
+  Codex CLI available inside the container.
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
