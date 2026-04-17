@@ -1,0 +1,23 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: my-store-paperclip_server_1
+      APP_PORT: 3100
+
+  server:
+    image: ghcr.io/paperclipai/paperclip:latest
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3100
+      PAPERCLIP_HOME: /paperclip
+      PAPERCLIP_DEPLOYMENT_MODE: local_trusted
+      BETTER_AUTH_SECRET: umbrel-paperclip-local-secret-change-if-you-enable-auth
+      # Uncomment and set this to enable Paperclip's `codex_local` adapter.
+      # OPENAI_API_KEY: sk-...
+    volumes:
+      - ./data/paperclip:/paperclip
