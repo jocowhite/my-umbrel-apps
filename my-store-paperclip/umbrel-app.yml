@@ -4,7 +4,7 @@ name: Paperclip
 tagline: Open-source orchestration for autonomous AI companies
 icon: https://github.com/paperclipai.png
 category: ai
-version: "2026.416.0"
+version: "2026.403.0"
 port: 3118
 description: >-
   Paperclip is a self-hosted control plane for running teams of AI agents like

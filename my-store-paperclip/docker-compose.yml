@@ -8,7 +8,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   server:
-    image: ghcr.io/paperclipai/paperclip:v2026.416.0
+    image: ghcr.io/paperclipai/paperclip:sha-a072377@sha256:adfd3795fb98c2599c9b14443a49df86b8f08fb98f5ab7810e777d04c1ff6709
     user: "1000:1000"
     restart: on-failure
     entrypoint:
