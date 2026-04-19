@@ -1,0 +1,16 @@
+manifestVersion: 1
+id: garmin-fetcher
+category: health
+name: Garmin Fetcher
+version: "1.0.0"
+tagline: Syncs Garmin health data to your Umbrel's InfluxDB
+description: >-
+  This app only runs the fetcher service. It connects to your existing 
+  Umbrel InfluxDB instance. Use the official Grafana app to view the data.
+developer: Arpan Ghosh
+website: https://github.com/arpanghosh8453/garmin-grafana
+submitter: jocowhite
+iconUri: https://raw.githubusercontent.com/arpanghosh8453/garmin-grafana/master/Extra/icon.png
+dependencies:
+  - influxdb
+  - grafana
