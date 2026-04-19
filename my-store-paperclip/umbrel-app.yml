@@ -3,7 +3,7 @@ id: my-store-paperclip
 name: Paperclip
 tagline: Orchestrate teams of AI agents from your Umbrel
 icon: https://github.com/paperclipai.png
-category: Development
+category: development
 version: "1.0.0"
 port: 3117
 description: >-
@@ -21,9 +21,7 @@ submission: https://github.com/paperclipai/paperclip
 repo: https://github.com/paperclipai/paperclip
 support: https://github.com/paperclipai/paperclip/issues
 gallery: []
-releaseNotes: >-
-  Initial Umbrel package for Paperclip using the official container image with
-  Codex CLI available inside the container.
+releaseNotes: ""
 dependencies: []
 path: ""
 defaultUsername: ""
