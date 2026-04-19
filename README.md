@@ -180,6 +180,39 @@ Current Paperclip-specific choices:
    `pre-start` creates the initial config if missing
    `post-start` generates a bootstrap invite after health checks succeed
 
+## Paperclip Bootstrap Troubleshooting
+
+If a fresh Paperclip install shows the signup/bootstrap screen but submitting a
+normal "create account" form returns `403`, that is usually expected behavior
+in `authenticated` mode.
+
+Important detail:
+
+- `paperclipai auth bootstrap-ceo` does not create the first admin account by itself
+- it creates or rotates a one-time bootstrap invite URL
+- the first admin account must be created by opening that invite URL and
+  completing the invite flow
+- using the normal signup path instead of the invite URL can return `403`
+
+For this Umbrel package, the active bootstrap invite is written to:
+
+```bash
+${APP_DATA_DIR}/data/bootstrap-invite-url.txt
+```
+
+It is also printed in the Paperclip server logs as:
+
+```text
+Paperclip bootstrap invite: http://...
+```
+
+Useful commands on the Umbrel host:
+
+```bash
+sudo docker logs my-store-paperclip_server_1 --tail 200
+sudo cat /home/umbrel/umbrel/app-data/my-store-paperclip/data/bootstrap-invite-url.txt
+```
+
 ## Useful Umbrel Commands
 
 Refresh the cloned repo manually on Umbrel:

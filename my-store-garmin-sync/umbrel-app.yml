@@ -1,0 +1,35 @@
+manifestVersion: 1.1
+id: my-store-garmin-sync
+name: Garmin Sync
+tagline: Configure and run Garmin-to-Influx sync from Umbrel
+icon: https://raw.githubusercontent.com/arpanghosh8453/garmin-grafana/master/Extra/icon.png
+category: health
+version: "1.0.0"
+port: 3587
+description: >-
+  Garmin Sync adds a small setup UI to the Garmin fetch worker so you can
+  configure credentials and sync settings directly from Umbrel instead of
+  editing a compose file by hand.
+
+
+  The app stores configuration and Garmin session tokens in Umbrel app data,
+  restarts automatically with Umbrel, and writes metrics into your existing
+  Umbrel InfluxDB instance.
+
+
+  After saving settings in the app UI, the worker is restarted automatically so
+  the new configuration takes effect right away.
+developer: jocowhite
+website: https://github.com/jocowhite/my-umbrel-apps
+submitter: jocowhite
+submission: https://github.com/jocowhite/my-umbrel-apps
+repo: https://github.com/arpanghosh8453/garmin-grafana
+support: https://github.com/arpanghosh8453/garmin-grafana/issues
+gallery: []
+releaseNotes: ""
+dependencies:
+  - influxdb
+  - grafana
+path: ""
+defaultUsername: ""
+defaultPassword: ""
