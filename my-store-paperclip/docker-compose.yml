@@ -5,19 +5,28 @@ services:
     environment:
       APP_HOST: my-store-paperclip_server_1
       APP_PORT: 3100
+      PROXY_AUTH_ADD: "false"
 
   server:
-    image: ghcr.io/paperclipai/paperclip:latest
-    restart: unless-stopped
-    init: true
+    image: ghcr.io/paperclipai/paperclip:v2026.416.0
     user: "1000:1000"
+    restart: on-failure
+    entrypoint:
+      - node
+    command:
+      - --import
+      - ./server/node_modules/tsx/dist/loader.mjs
+      - server/dist/index.js
     environment:
-      HOST: 0.0.0.0
-      PORT: 3100
-      PAPERCLIP_HOME: /paperclip
-      PAPERCLIP_DEPLOYMENT_MODE: local_trusted
-      BETTER_AUTH_SECRET: umbrel-paperclip-local-secret-change-if-you-enable-auth
-      # Uncomment and set this to enable Paperclip's `codex_local` adapter.
+      HOST: "0.0.0.0"
+      PAPERCLIP_HOME: "/paperclip"
+      PAPERCLIP_PUBLIC_URL: "http://${DEVICE_DOMAIN_NAME}:3118"
+      PAPERCLIP_ALLOWED_HOSTNAMES: "${DEVICE_DOMAIN_NAME},${DEVICE_DOMAIN_NAME}:3118,${DEVICE_HOSTNAME},${DEVICE_HOSTNAME}:3118,${APP_DOMAIN},${APP_DOMAIN}:3118,${APP_HIDDEN_SERVICE},${APP_MY_STORE_PAPERCLIP_LOCAL_IPS},my-store-paperclip_server_1"
+      BETTER_AUTH_SECRET: "${APP_SEED}"
+      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
+      PAPERCLIP_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
       # OPENAI_API_KEY: sk-...
     volumes:
-      - ./data/paperclip:/paperclip
+      - ${APP_DATA_DIR}/data:/paperclip
