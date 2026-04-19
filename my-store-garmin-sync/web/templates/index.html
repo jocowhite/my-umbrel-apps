@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Garmin Sync Control</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <div class="background-grid" aria-hidden="true"></div>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Garmin Sync Control Room</p>
+        <h1>Stop editing compose files. Run Garmin sync like a real Umbrel app.</h1>
+        <p class="lede">
+          Save Garmin and InfluxDB credentials, keep token files in Umbrel app
+          storage, and restart the worker in one move.
+        </p>
+        <div class="hero-cards">
+          <article class="stat-card">
+            <span class="stat-label">Worker Status</span>
+            <strong class="stat-value">{{ worker_state }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Garmin Secret</span>
+            <strong class="stat-value">{{ "stored" if has_password else "missing" }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Storage</span>
+            <strong class="stat-value">Umbrel app data</strong>
+          </article>
+        </div>
+      </section>
+
+      {% if status_message %}
+      <section class="notice notice-{{ status_kind }}">
+        <p>{{ status_message }}</p>
+      </section>
+      {% endif %}
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Credentials</p>
+            <h2>Garmin account and Influx target</h2>
+          </div>
+          <p class="panel-copy">
+            Enter your details below. Leaving the Garmin password empty keeps the
+            currently saved password.
+          </p>
+        </div>
+
+        <form method="post" class="config-form">
+          <div class="field-group">
+            <label for="garmin_email">Garmin email</label>
+            <input id="garmin_email" name="garmin_email" type="email" value="{{ settings.garmin_email }}" required>
+          </div>
+
+          <div class="field-group">
+            <label for="garmin_password">Garmin password</label>
+            <input id="garmin_password" name="garmin_password" type="password" placeholder="{{ 'Leave blank to keep saved password' if has_password else 'Enter Garmin password' }}">
+          </div>
+
+          <div class="field-group field-toggle">
+            <label for="garmin_is_cn">Use Garmin China account</label>
+            <input id="garmin_is_cn" name="garmin_is_cn" type="checkbox" {% if settings.garmin_is_cn %}checked{% endif %}>
+          </div>
+
+          <div class="field-group">
+            <label for="influx_host">InfluxDB host</label>
+            <input id="influx_host" name="influx_host" type="text" value="{{ settings.influx_host }}" required>
+          </div>
+
+          <div class="grid-two">
+            <div class="field-group">
+              <label for="influx_port">InfluxDB port</label>
+              <input id="influx_port" name="influx_port" type="text" value="{{ settings.influx_port }}" required>
+            </div>
+            <div class="field-group">
+              <label for="influx_database">Database</label>
+              <input id="influx_database" name="influx_database" type="text" value="{{ settings.influx_database }}" required>
+            </div>
+          </div>
+
+          <div class="grid-two">
+            <div class="field-group">
+              <label for="influx_username">InfluxDB username</label>
+              <input id="influx_username" name="influx_username" type="text" value="{{ settings.influx_username }}" required>
+            </div>
+            <div class="field-group">
+              <label for="influx_password">InfluxDB password</label>
+              <input id="influx_password" name="influx_password" type="password" value="{{ settings.influx_password }}" required>
+            </div>
+          </div>
+
+          <div class="panel-header compact">
+            <div>
+              <p class="eyebrow">Sync Tuning</p>
+              <h2>Optional worker settings</h2>
+            </div>
+          </div>
+
+          <div class="grid-two">
+            <div class="field-group">
+              <label for="update_interval_seconds">Update interval seconds</label>
+              <input id="update_interval_seconds" name="update_interval_seconds" type="number" min="60" value="{{ settings.update_interval_seconds }}">
+            </div>
+            <div class="field-group">
+              <label for="log_level">Log level</label>
+              <select id="log_level" name="log_level">
+                {% for level in ["DEBUG", "INFO", "WARNING", "ERROR"] %}
+                <option value="{{ level }}" {% if settings.log_level == level %}selected{% endif %}>{{ level }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="grid-two">
+            <div class="field-group">
+              <label for="user_timezone">Timezone</label>
+              <input id="user_timezone" name="user_timezone" type="text" placeholder="Europe/Berlin" value="{{ settings.user_timezone }}">
+            </div>
+            <div class="field-group">
+              <label for="fetch_selection">Fetch selection</label>
+              <input id="fetch_selection" name="fetch_selection" type="text" placeholder="sleep,steps,heartrate" value="{{ settings.fetch_selection }}">
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="submit">Save settings and restart sync</button>
+            <p class="hint">
+              Saving writes configuration into Umbrel app data and restarts the
+              Garmin worker so the new settings apply immediately.
+            </p>
+          </div>
+        </form>
+      </section>
+    </main>
+  </body>
+  </html>

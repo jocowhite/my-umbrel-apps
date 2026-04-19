@@ -1,0 +1,31 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: my-store-garmin-sync_web_1
+      APP_PORT: 8080
+
+  web:
+    build:
+      context: ./web
+    restart: unless-stopped
+    environment:
+      APP_DATA_DIR: /data
+      WORKER_CONTAINER_NAME: my-store-garmin-sync_worker_1
+    volumes:
+      - ${APP_DATA_DIR}:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  worker:
+    build:
+      context: ./worker
+    restart: unless-stopped
+    networks:
+      - umbrel_main_network
+    volumes:
+      - ${APP_DATA_DIR}:/data
+
+networks:
+  umbrel_main_network:
+    external: true
