@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Paperclip app icon</title>
+  <desc id="desc">A geometric paperclip loop over a dark green workspace grid.</desc>
+  <defs>
+    <linearGradient id="bg" x1="72" x2="440" y1="48" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17251f"/>
+      <stop offset="1" stop-color="#314433"/>
+    </linearGradient>
+    <linearGradient id="clip" x1="159" x2="353" y1="116" y2="396" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f5d57a"/>
+      <stop offset="0.48" stop-color="#f58e54"/>
+      <stop offset="1" stop-color="#d55737"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M104 160h304M104 256h304M104 352h304M160 104v304M256 104v304M352 104v304" stroke="#f7efe0" stroke-opacity=".08" stroke-width="10"/>
+  <path d="M321 147c45 45 45 118 0 163l-66 66c-34 34-89 34-123 0s-34-89 0-123l97-97c22-22 58-22 80 0s22 58 0 80l-96 96" fill="none" stroke="url(#clip)" stroke-linecap="round" stroke-linejoin="round" stroke-width="42"/>
+  <path d="M188 310l96-96" stroke="#fff6dc" stroke-linecap="round" stroke-width="24" opacity=".9"/>
+  <circle cx="367" cy="135" r="28" fill="#f7efe0"/>
+  <circle cx="367" cy="135" r="12" fill="#d55737"/>
+</svg>

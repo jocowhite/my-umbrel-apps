@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Garmin Sync app icon</title>
+  <desc id="desc">A running route pulse syncing into a database cylinder.</desc>
+  <defs>
+    <linearGradient id="bg" x1="48" x2="464" y1="72" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f4efe1"/>
+      <stop offset="1" stop-color="#dbe7d0"/>
+    </linearGradient>
+    <linearGradient id="pulse" x1="96" x2="416" y1="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2f6f4e"/>
+      <stop offset=".48" stop-color="#d55f32"/>
+      <stop offset="1" stop-color="#243c2f"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M96 276h68l32-84 62 170 44-116h114" fill="none" stroke="url(#pulse)" stroke-linecap="round" stroke-linejoin="round" stroke-width="34"/>
+  <ellipse cx="360" cy="158" rx="72" ry="32" fill="#243c2f"/>
+  <path d="M288 158v92c0 18 32 32 72 32s72-14 72-32v-92" fill="#31543c"/>
+  <ellipse cx="360" cy="250" rx="72" ry="32" fill="#3f6d4c"/>
+  <ellipse cx="360" cy="158" rx="42" ry="14" fill="#8fae74"/>
+  <circle cx="143" cy="134" r="34" fill="#d55f32"/>
+  <path d="M126 134h34M143 117v34" stroke="#fffaf0" stroke-linecap="round" stroke-width="12"/>
+</svg>
