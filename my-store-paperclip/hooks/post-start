@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_CONTAINER="paperclip_server_1"
+APP_CONTAINER="my-store-paperclip_server_1"
 HEALTH_URL="http://127.0.0.1:3100/api/health"
 CONFIG_FILE="/paperclip/instances/default/config.json"
 PUBLIC_URL="http://${DEVICE_DOMAIN_NAME}:8860"
