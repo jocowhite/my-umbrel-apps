@@ -30,6 +30,21 @@ The app contains two services:
 
 Both services share `${APP_DATA_DIR}`.
 
+## Why This Replaces The Fetcher-Only App
+
+The older `garmin-grafana` / `my-store-garmin-fetcher` package only contains
+the background worker. That works, but credentials still have to be edited in
+`docker-compose.yml` before publishing or installing.
+
+This app packages the same idea as one Umbrel app with two backend services:
+
+1. `web` for configuration
+2. `worker` for the actual Garmin sync
+
+That means you do not need two Garmin apps installed. For normal use, prefer
+this `my-store-garmin-sync` app and treat the fetcher-only app as a simpler
+legacy/debug package.
+
 ## Storage
 
 The app stores data in:

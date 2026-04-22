@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Garmin Sync settings UI preview</title>
+  <desc id="desc">A stylized settings page for Garmin and InfluxDB credentials.</desc>
+  <rect width="1280" height="720" fill="#f3eee2"/>
+  <circle cx="1040" cy="120" r="260" fill="#687b34" opacity=".18"/>
+  <circle cx="190" cy="610" r="240" fill="#d4572c" opacity=".16"/>
+  <rect x="86" y="70" width="1108" height="580" rx="30" fill="#fffaf0" stroke="#d6ccb9" stroke-width="4"/>
+  <rect x="126" y="110" width="1030" height="190" rx="24" fill="#f4ead8"/>
+  <text x="160" y="172" font-family="Avenir Next Condensed, Arial, sans-serif" font-size="54" font-weight="700" fill="#1b2418">Garmin Sync Control Room</text>
+  <text x="160" y="232" font-family="Georgia, serif" font-size="28" fill="#5c6457">Configure Garmin credentials, InfluxDB target, and worker restart from one Umbrel page.</text>
+  <rect x="126" y="334" width="490" height="88" rx="18" fill="#ffffff"/>
+  <rect x="664" y="334" width="492" height="88" rx="18" fill="#ffffff"/>
+  <rect x="126" y="458" width="490" height="88" rx="18" fill="#ffffff"/>
+  <rect x="664" y="458" width="492" height="88" rx="18" fill="#ffffff"/>
+  <path d="M166 392h220M704 392h230M166 516h250M704 516h210" stroke="#687b34" stroke-width="18" stroke-linecap="round" opacity=".42"/>
+  <rect x="126" y="582" width="312" height="54" rx="27" fill="#d4572c"/>
+  <text x="170" y="618" font-family="Avenir Next Condensed, Arial, sans-serif" font-size="24" font-weight="700" fill="#fffaf0">SAVE AND RESTART</text>
+</svg>

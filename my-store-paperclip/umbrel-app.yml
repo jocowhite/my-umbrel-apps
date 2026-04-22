@@ -5,6 +5,7 @@ tagline: Open-source orchestration for autonomous AI companies
 category: ai
 version: "2026.403.0"
 port: 8860
+icon: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-paperclip/icon.svg
 description: >-
   Paperclip lets you run AI agents with roles, budgets, tools, and a shared workspace from one web UI.
   You can organize work into companies, teams, tickets, and goals, then track what agents did with logs,
@@ -21,7 +22,8 @@ submitter: jocowhite
 submission: https://github.com/getumbrel/umbrel-apps/pull/5298
 repo: https://github.com/paperclipai/paperclip
 support: https://github.com/paperclipai/paperclip/issues
-gallery: []
+gallery:
+  - https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-paperclip/gallery.svg
 releaseNotes: ""
 dependencies: []
 path: ""

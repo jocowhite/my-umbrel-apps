@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Paperclip dashboard preview</title>
+  <desc id="desc">A stylized preview of an AI agent orchestration dashboard.</desc>
+  <rect width="1280" height="720" fill="#17251f"/>
+  <circle cx="1080" cy="90" r="240" fill="#d55737" opacity=".18"/>
+  <circle cx="180" cy="620" r="280" fill="#f5d57a" opacity=".12"/>
+  <rect x="80" y="76" width="1120" height="568" rx="36" fill="#f8efd9"/>
+  <rect x="118" y="116" width="230" height="488" rx="24" fill="#233327"/>
+  <rect x="386" y="116" width="774" height="116" rx="24" fill="#fffaf0"/>
+  <rect x="386" y="264" width="234" height="296" rx="24" fill="#fffaf0"/>
+  <rect x="648" y="264" width="234" height="296" rx="24" fill="#fffaf0"/>
+  <rect x="910" y="264" width="250" height="296" rx="24" fill="#fffaf0"/>
+  <text x="148" y="172" font-family="Avenir Next Condensed, Arial, sans-serif" font-size="42" font-weight="700" fill="#f8efd9">Paperclip</text>
+  <text x="426" y="182" font-family="Avenir Next Condensed, Arial, sans-serif" font-size="52" font-weight="700" fill="#17251f">Autonomous company control plane</text>
+  <path d="M156 264h148M156 326h110M156 388h132M156 450h92" stroke="#f8efd9" stroke-width="18" stroke-linecap="round" opacity=".55"/>
+  <path d="M436 338h134M436 390h110M436 442h150M698 338h134M698 390h96M698 442h138M960 338h142M960 390h112M960 442h126" stroke="#314433" stroke-width="18" stroke-linecap="round" opacity=".28"/>
+  <circle cx="526" cy="526" r="18" fill="#d55737"/>
+  <circle cx="788" cy="526" r="18" fill="#f58e54"/>
+  <circle cx="1050" cy="526" r="18" fill="#314433"/>
+</svg>
