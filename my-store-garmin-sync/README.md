@@ -30,6 +30,20 @@ The app contains two services:
 
 Both services share `${APP_DATA_DIR}`.
 
+## Container Images
+
+The app pulls prebuilt multi-architecture images from GitHub Container Registry:
+
+1. `ghcr.io/jocowhite/my-umbrel-apps/garmin-sync-web:latest`
+2. `ghcr.io/jocowhite/my-umbrel-apps/garmin-sync-worker:latest`
+
+Those images are built for `linux/amd64` and `linux/arm64` by the GitHub Actions workflow at
+`.github/workflows/garmin-sync-images.yml` whenever files under
+`my-store-garmin-sync/` change on `master`.
+
+After the first successful workflow run, make sure the GHCR packages are public
+so Umbrel can pull them without authentication.
+
 ## Why This Replaces The Fetcher-Only App
 
 The older `garmin-grafana` / `my-store-garmin-fetcher` package only contains
