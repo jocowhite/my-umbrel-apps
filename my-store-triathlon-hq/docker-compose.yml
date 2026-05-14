@@ -9,136 +9,24 @@ services:
   server:
     image: python:3.13-alpine
     init: true
-    user: "1000:1000"
+    restart: on-failure
+    command: ["python", "/app/server.py"]
     environment:
+      PORT: "8080"
       RACE_NAME: "Challenge Kaiserwinkl-Walchsee"
       RACE_DATE: "2026-06-28"
       RACE_DISTANCE: "1.9 km swim · 90 km bike · 21.1 km run"
       BIKE_ELEVATION: "1100 m climbing"
-    command:
-      - python
-      - -c
-      - |
-        from http.server import BaseHTTPRequestHandler, HTTPServer
-        from datetime import date, datetime, timezone
-        import html
-        import os
+      INFLUXDB_URL: "http://influxdb_influxdb_1:8086"
+      INFLUXDB_DATABASE: "GarminStats"
+      INFLUXDB_USERNAME: "openclaw"
+      INFLUXDB_PASSWORD: "openclaw"
+    volumes:
+      - ./app:/app:ro
+    networks:
+      - default
+      - umbrel_main_network
 
-        RACE_NAME = os.environ.get('RACE_NAME', 'Triathlon Race')
-        RACE_DATE = os.environ.get('RACE_DATE', '2026-06-28')
-        RACE_DISTANCE = os.environ.get('RACE_DISTANCE', '1.9 km swim · 90 km bike · 21.1 km run')
-        BIKE_ELEVATION = os.environ.get('BIKE_ELEVATION', '1100 m climbing')
-
-        def days_until_race():
-            try:
-                race_day = date.fromisoformat(RACE_DATE)
-                return (race_day - date.today()).days
-            except Exception:
-                return None
-
-        def readiness_message(days_left):
-            if days_left is None:
-                return 'Set a valid RACE_DATE to unlock the countdown.'
-            if days_left < 0:
-                return 'Race day is complete — time to review, recover, and celebrate.'
-            if days_left <= 14:
-                return 'Taper focus: stay sharp, stay healthy, avoid hero workouts.'
-            if days_left <= 42:
-                return 'Race-specific block: long ride confidence, brick runs, nutrition practice.'
-            return 'Build phase: consistency first, especially swim frequency and bike climbing prep.'
-
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, fmt, *args):
-                return
-
-            def do_GET(self):
-                days_left = days_until_race()
-                now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-                countdown = 'Set race date' if days_left is None else f'{days_left} days'
-                advice = readiness_message(days_left)
-                path = html.escape(self.path)
-                body = f'''<!doctype html>
-        <html lang="en">
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Triathlon HQ</title>
-          <style>
-            :root {{ color-scheme: dark; --bg:#07111f; --card:#0f1b2d; --muted:#9ca3af; --text:#f8fafc; --blue:#38bdf8; --green:#34d399; --amber:#fbbf24; --red:#fb7185; }}
-            * {{ box-sizing: border-box; }}
-            body {{ margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top left, #12345a 0, var(--bg) 42rem); color:var(--text); }}
-            main {{ width:min(1120px, 100%); margin:0 auto; padding:32px 18px 48px; }}
-            .hero {{ display:grid; grid-template-columns: 1.25fr .75fr; gap:20px; align-items:stretch; }}
-            .card {{ background:rgba(15,27,45,.88); border:1px solid rgba(148,163,184,.18); border-radius:28px; padding:26px; box-shadow:0 24px 80px rgba(0,0,0,.28); backdrop-filter: blur(10px); }}
-            h1 {{ margin:0 0 10px; font-size:clamp(2.4rem, 7vw, 5.8rem); line-height:.94; letter-spacing:-.06em; }}
-            h2 {{ margin:0 0 14px; font-size:1.2rem; color:#e5e7eb; }}
-            p {{ color:#d1d5db; line-height:1.55; }}
-            .pill {{ display:inline-flex; align-items:center; gap:.45rem; padding:.42rem .7rem; border-radius:999px; background:rgba(56,189,248,.13); color:#bae6fd; border:1px solid rgba(56,189,248,.28); font-weight:700; }}
-            .count {{ font-size:clamp(3rem, 9vw, 6rem); line-height:1; font-weight:900; letter-spacing:-.06em; color:var(--green); }}
-            .grid {{ display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:20px; }}
-            .metric {{ border-radius:22px; padding:20px; background:#0b1424; border:1px solid rgba(148,163,184,.14); }}
-            .metric strong {{ display:block; font-size:2rem; margin-bottom:6px; }}
-            .swim strong {{ color:var(--blue); }} .bike strong {{ color:var(--green); }} .run strong {{ color:var(--amber); }}
-            ul {{ margin:10px 0 0; padding-left:1.2rem; color:#d1d5db; }}
-            li {{ margin:.45rem 0; }}
-            .focus {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }}
-            .footer {{ margin-top:18px; color:var(--muted); font-size:.95rem; }}
-            code {{ background:#020617; border:1px solid rgba(148,163,184,.18); border-radius:.45rem; padding:.14rem .38rem; }}
-            @media (max-width: 820px) {{ .hero, .grid, .focus {{ grid-template-columns:1fr; }} h1 {{ font-size:3.5rem; }} }}
-          </style>
-        </head>
-        <body>
-          <main>
-            <section class="hero">
-              <div class="card">
-                <span class="pill">🏊‍♂️ Triathlon HQ</span>
-                <h1>{html.escape(RACE_NAME)}</h1>
-                <p>{html.escape(RACE_DISTANCE)} · bike course: {html.escape(BIKE_ELEVATION)}</p>
-                <p><strong>Coach note:</strong> {html.escape(advice)}</p>
-              </div>
-              <div class="card">
-                <h2>Race countdown</h2>
-                <div class="count">{html.escape(countdown)}</div>
-                <p>Race date: <strong>{html.escape(RACE_DATE)}</strong></p>
-                <p class="footer">Updated: {now}</p>
-              </div>
-            </section>
-
-            <section class="grid">
-              <div class="metric swim"><strong>Swim</strong><span>Priority habit</span><p>Build frequency and confidence. Aim for steady technique work before adding intensity.</p></div>
-              <div class="metric bike"><strong>Bike</strong><span>Race bottleneck</span><p>Walchsee has real climbing. Long rides, low-cadence strength, and fueling practice matter.</p></div>
-              <div class="metric run"><strong>Run</strong><span>Existing strength</span><p>Protect the run with smart pacing off the bike and brick sessions, not extra fatigue.</p></div>
-            </section>
-
-            <section class="focus">
-              <div class="card">
-                <h2>This week checklist</h2>
-                <ul>
-                  <li>At least one swim session, ideally two if recovery is good.</li>
-                  <li>One longer aerobic bike ride with climbing or steady resistance.</li>
-                  <li>One short brick run after cycling to practice legs and pacing.</li>
-                  <li>One honest recovery check: sleep, resting HR, soreness, motivation.</li>
-                </ul>
-              </div>
-              <div class="card">
-                <h2>Next upgrades</h2>
-                <ul>
-                  <li>Connect to Garmin/InfluxDB for live swim-bike-run totals.</li>
-                  <li>Add readiness score from sleep, HRV, resting HR, and recent load.</li>
-                  <li>Add race nutrition planner for carbs, sodium, bottles, and gels.</li>
-                  <li>Add weekly coach recommendation generated from actual data.</li>
-                </ul>
-              </div>
-            </section>
-
-            <p class="footer">Path: <code>{path}</code> · Local Umbrel MVP, no private credentials embedded.</p>
-          </main>
-        </body>
-        </html>'''.encode()
-                self.send_response(200)
-                self.send_header('Content-Type', 'text/html; charset=utf-8')
-                self.send_header('Content-Length', str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-        HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+networks:
+  umbrel_main_network:
+    external: true
