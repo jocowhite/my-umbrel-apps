@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675">
+  <rect width="1200" height="675" fill="#111827"/>
+  <rect x="220" y="135" width="760" height="405" rx="36" fill="#1f2937" stroke="#374151" stroke-width="4"/>
+  <text x="270" y="235" fill="#86efac" font-family="Arial, sans-serif" font-size="34" font-weight="700">✓ Umbrel custom app is running</text>
+  <text x="270" y="330" fill="#f9fafb" font-family="Arial, sans-serif" font-size="86" font-weight="800">Tiny Status</text>
+  <text x="270" y="410" fill="#d1d5db" font-family="Arial, sans-serif" font-size="36">Server time, request path, and smoke-test status.</text>
+</svg>
