@@ -1,0 +1,29 @@
+manifestVersion: 1.1
+id: my-store-triathlon-hq
+name: Triathlon HQ
+tagline: Race countdown and training dashboard for your Umbrel
+icon: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-triathlon-hq/icon.svg
+category: health
+version: "0.1.0"
+port: 8477
+description: >-
+  Triathlon HQ is a personal training dashboard for preparing for a middle-distance triathlon.
+  It shows a race countdown, weekly swim-bike-run focus, readiness guidance, and next-step coaching prompts.
+
+
+  This first version is intentionally lightweight: it runs locally on Umbrel and avoids hardcoding private
+  Garmin or InfluxDB credentials into the app store repository. Future versions can connect to Garmin/InfluxDB
+  data and turn this into a live training cockpit.
+developer: jocowhite
+website: https://github.com/jocowhite/my-umbrel-apps
+submitter: jocowhite
+submission: https://github.com/jocowhite/my-umbrel-apps
+repo: https://github.com/jocowhite/my-umbrel-apps
+support: https://github.com/jocowhite/my-umbrel-apps/issues
+gallery:
+  - https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-triathlon-hq/gallery.svg
+releaseNotes: "Initial Triathlon HQ MVP replacing the Tiny Status smoke-test app."
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
