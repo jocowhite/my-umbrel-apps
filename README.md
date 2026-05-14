@@ -252,3 +252,197 @@ sudo sed -n '1,120p' "$STORE/my-store-paperclip/umbrel-app.yml"
 sudo sed -n '1,220p' "$STORE/my-store-paperclip/docker-compose.yml"
 find "$STORE/my-store-paperclip" -maxdepth 2 -type f | sort
 ```
+
+## Agent Workflow Notes
+
+This repo is meant to be maintainable by any future agent or developer, not only
+by the assistant session that created the current apps.
+
+### Golden Rules
+
+1. **Always bump `version` in `<app-id>/umbrel-app.yml` for user-visible app
+   updates.** Umbrel may not show an update if only `docker-compose.yml` or app
+   internals changed.
+
+2. **Keep credentials out of the repository.** Do not commit PATs, Garmin
+   passwords, InfluxDB admin passwords, tokens, or device-specific secrets.
+   Use environment variables, app settings, Umbrel-managed app data, or local
+   credential helpers outside the repo.
+
+3. **Test what can be tested locally, but remember local tests are not Umbrel
+   runtime tests.** OpenClaw may run inside its own container, not directly on
+   the Umbrel host. It can validate Python code, HTTP endpoints, and InfluxDB
+   access from its own network, but it cannot fully prove Umbrel app proxy,
+   container names, bind mounts, or cloned-store paths.
+
+4. **Prefer robust Umbrel packaging over clever local assumptions.** Avoid
+   relying on relative bind mounts unless confirmed on the actual Umbrel host.
+   If an app needs local source files, either build/publish a container image or
+   use an Umbrel-supported lifecycle/persistence pattern.
+
+5. **Separate discovery problems from runtime problems.**
+   - Store/discovery issues: app ID prefix, manifest format, app version,
+     category casing, port collisions, gallery/icon URLs.
+   - Runtime issues: image availability, command/entrypoint, volume layout,
+     Docker network access, credentials, app proxy target.
+
+6. **When a proxy log says it cannot find `<app-id>_server_1`, inspect the
+   server logs first.** The proxy error often just means the server container is
+   crashing or never joined the expected network.
+
+### Suggested Change Process
+
+For each app change:
+
+1. Edit the app files.
+2. Run syntax checks for any scripts.
+3. If possible, run the app server locally and check `/healthz`, `/api/...`, and
+   the main HTML page.
+4. Check that icon/gallery URLs point to files that will exist on GitHub raw.
+5. Bump `version` in `umbrel-app.yml`.
+6. Update `releaseNotes` with the practical reason for the update.
+7. Commit and push.
+8. If Umbrel does not show the update, inspect the cloned store under
+   `/home/umbrel/umbrel/app-stores/` and confirm the manifest version there.
+
+### PAT / GitHub Auth
+
+A GitHub PAT may be needed for pushes. Store it outside the repo using a local
+Git credential helper or another host-secret mechanism. Never write it into
+README files, app manifests, compose files, source code, or memory notes.
+
+A previous push failed when trying to update `.github/workflows/...` because the
+PAT did not have `workflow` scope. If future work needs to create or update
+GitHub Actions workflows, use a PAT with the `workflow` permission or avoid
+workflow changes.
+
+## Triathlon HQ Notes
+
+App folder: [`my-store-triathlon-hq`](./my-store-triathlon-hq)
+
+Purpose: personal Challenge Kaiserwinkl-Walchsee training dashboard for Umbrel.
+
+Current behavior:
+
+- Connects to Garmin data stored in InfluxDB.
+- Shows race countdown and current training phase.
+- Computes a readiness score from Garmin health/training signals.
+- Shows last-7-day swim/bike/run totals.
+- Lists recent activities.
+- Exposes a JSON endpoint at `/api/summary` for future OpenClaw or automation
+  integrations.
+
+### Data Source
+
+Default runtime connection in `docker-compose.yml`:
+
+```yaml
+INFLUXDB_URL: "http://influxdb_influxdb_1:8086"
+INFLUXDB_DATABASE: "GarminStats"
+INFLUXDB_USERNAME: "openclaw"
+INFLUXDB_PASSWORD: "openclaw"
+```
+
+These are intentionally environment variables so the app can later grow a setup
+UI or be adjusted per Umbrel host. Do not replace them with private secrets in
+committed code.
+
+Measurements used or inspected:
+
+- `ActivitySummary`
+- `DailyStats`
+- `SleepSummary`
+- `HRV_Intraday`
+- `VO2_Max`
+
+Useful local InfluxDB check from an environment that can reach the database:
+
+```bash
+python3 - <<'PY'
+import json, urllib.parse, urllib.request
+base = 'http://influxdb_influxdb_1:8086/query'
+params = {'db': 'GarminStats', 'u': 'openclaw', 'p': 'openclaw', 'q': 'SHOW MEASUREMENTS'}
+print(urllib.request.urlopen(base + '?' + urllib.parse.urlencode(params), timeout=5).read().decode())
+PY
+```
+
+### Important Umbrel Runtime Lesson
+
+A version of Triathlon HQ used this compose pattern:
+
+```yaml
+volumes:
+  - ./app:/app:ro
+command: ["python", "/app/server.py"]
+```
+
+It failed on Umbrel with:
+
+```text
+python: can't open file '/app/server.py': [Errno 2] No such file or directory
+```
+
+The app proxy then showed repeated errors like:
+
+```text
+Error waiting for port: "The address 'my-store-triathlon-hq_server_1' cannot be found"
+```
+
+Root cause: the assistant was testing from an OpenClaw container, not directly on
+the Umbrel host. The local assumption about relative bind mounts did not match
+Umbrel's runtime behavior.
+
+Current workaround: `docker-compose.yml` embeds the Python server into the
+startup command and writes it to `/tmp/triathlon-hq.py` inside the container
+before running it. This avoids requiring a custom GHCR image or a relative bind
+mount. It is not the prettiest packaging style, but it is robust for a quick
+community-store app with the current PAT limitations.
+
+Longer-term better solution: build and publish a proper pinned image such as:
+
+```text
+ghcr.io/jocowhite/my-umbrel-apps/triathlon-hq:<version>
+```
+
+Then simplify `docker-compose.yml` to run that image. Updating GitHub Actions to
+build this image requires a PAT/token with workflow permissions.
+
+### Triathlon HQ Test Checklist
+
+From this repo, before pushing changes:
+
+```bash
+cd /data/.openclaw/workspace/repos/my-umbrel-apps
+python3 -m py_compile my-store-triathlon-hq/app/server.py
+PORT=18080 \
+INFLUXDB_URL=http://influxdb_influxdb_1:8086 \
+INFLUXDB_DATABASE=GarminStats \
+INFLUXDB_USERNAME=openclaw \
+INFLUXDB_PASSWORD=openclaw \
+python3 my-store-triathlon-hq/app/server.py
+```
+
+In another shell/session:
+
+```bash
+curl -fsS http://127.0.0.1:18080/healthz
+curl -fsS http://127.0.0.1:18080/api/summary | python3 -m json.tool
+curl -fsS http://127.0.0.1:18080/ | grep -E 'Triathlon HQ|Recent activities|Health signals'
+```
+
+For the embedded compose startup command, extract and test the command block or
+at least confirm that the embedded Python still compiles after being written to
+`/tmp/triathlon-hq.py`.
+
+### Current Known Good Results
+
+During local OpenClaw-container testing against the available InfluxDB, the app
+returned:
+
+- readiness: `Green light`, score `83`
+- last-7-day total: `5.9 h`
+- swim: `2` sessions, `4.0 km`
+- bike: `9` sessions, `71.6 km`
+- run: `1` session, `6.5 km`
+
+These numbers are data-dependent and should change as Garmin sync updates.
