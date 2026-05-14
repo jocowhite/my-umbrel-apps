@@ -4,7 +4,7 @@ name: Triathlon HQ
 tagline: Race countdown and training dashboard for your Umbrel
 icon: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-triathlon-hq/icon.png
 category: health
-version: "0.2.0"
+version: "0.2.1"
 port: 8477
 description: >-
   Triathlon HQ is a personal training dashboard for preparing for a middle-distance triathlon.
@@ -24,7 +24,7 @@ repo: https://github.com/jocowhite/my-umbrel-apps
 support: https://github.com/jocowhite/my-umbrel-apps/issues
 gallery:
   - https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-triathlon-hq/gallery.png
-releaseNotes: "Live Garmin/InfluxDB dashboard with readiness, weekly sport totals, recent activities, and generated store artwork."
+releaseNotes: "Fix startup on Umbrel by embedding the dashboard server in docker-compose and removing the broken app bind mount."
 dependencies: []
 path: ""
 defaultUsername: ""
