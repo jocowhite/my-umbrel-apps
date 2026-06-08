@@ -63,7 +63,7 @@ DEFAULT_RULES = [
 ]
 
 FIELD_ALIASES = {
-    "date": ["buchungstag", "datum", "date", "transaction date", "completed date"],
+    "date": ["buchungstag", "datum", "date", "booking date", "transaction date", "completed date"],
     "value_date": ["valutadatum", "wertstellung", "value date"],
     "amount": ["betrag", "amount (eur)", "amount", "netto", "net"],
     "currency": ["waehrung", "wahrung", "currency"],
@@ -87,7 +87,8 @@ FIELD_ALIASES = {
     ],
     "type": ["buchungstext", "transaction type", "typ", "type"],
     "status": ["status"],
-    "iban": ["kontonummer/iban", "iban", "account number"],
+    "iban": ["kontonummer/iban", "iban", "partner iban", "account number"],
+    "account": ["auftragskonto", "account name", "konto"],
     "transaction_id": ["transaktionscode", "transaction id", "id"],
 }
 
@@ -305,10 +306,7 @@ def parse_transactions(raw: bytes, requested_source: str) -> tuple[str, list[dic
         description = row_value(row, "description")
         booking_type = row_value(row, "type")
         external_id = row_value(row, "transaction_id")
-        account = ""
-        if source == "sparkasse":
-            normalized = {text_key(key): (value or "").strip() for key, value in row.items() if key}
-            account = normalized.get("auftragskonto", "")
+        account = row_value(row, "account")
         fingerprint_data = "|".join(
             [source, booked_on, str(amount_cents), text_key(payee), text_key(description), external_id]
         )
@@ -933,7 +931,7 @@ def disable_category(category: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.5"
+    server_version = "MoneyMap/0.5.1"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")

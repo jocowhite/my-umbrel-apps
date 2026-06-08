@@ -52,6 +52,23 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(source, "paypal")
         self.assertEqual(rows[0]["amount_cents"], -1099)
 
+    def test_current_n26_booking_date_export(self):
+        raw = (
+            '"Booking Date","Value Date","Partner Name","Partner Iban",Type,'
+            '"Payment Reference","Account Name","Amount (EUR)","Original Amount",'
+            '"Original Currency","Exchange Rate"\n'
+            '2025-01-01,2024-12-31,"DB Vertrieb GmbH",DE123,Presentment,,'
+            'Hauptkonto,-13.49,13.49,EUR,1\n'
+        ).encode()
+        source, rows = app.parse_transactions(raw, "auto")
+        self.assertEqual(source, "n26")
+        self.assertEqual(rows[0]["booked_on"], "2025-01-01")
+        self.assertEqual(rows[0]["value_on"], "2024-12-31")
+        self.assertEqual(rows[0]["payee"], "DB Vertrieb GmbH")
+        self.assertEqual(rows[0]["iban"], "DE123")
+        self.assertEqual(rows[0]["account"], "Hauptkonto")
+        self.assertEqual(rows[0]["amount_cents"], -1349)
+
     def test_duplicate_and_transfer_reconciliation(self):
         sparkasse = (
             "Buchungstag;Verwendungszweck;Beguenstigter/Zahlungspflichtiger;Betrag;Waehrung\n"
