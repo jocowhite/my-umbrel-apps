@@ -530,20 +530,58 @@ def source_clause(source: str | None, alias: str = "") -> tuple[str, list[str]]:
     return f" AND {column} = ?", [source]
 
 
-def dashboard(month: str | None, source: str | None = None) -> dict:
+def dashboard(
+    month: str | None, source: str | None = None, view: str | None = None
+) -> dict:
     start, end = month_range(month)
+    personal = view == "personal"
     special_filter = is_special_flow_sql()
     special_filter_t = is_special_flow_sql("t")
+    reimbursement_filter = "category IN ('Wohnen', 'Haushalt')"
+    reimbursement_filter_t = "t.category IN ('Wohnen', 'Haushalt')"
+    income_condition = (
+        f"amount_cents > 0 AND is_transfer=0 AND NOT {special_filter}"
+        + (f" AND NOT {reimbursement_filter}" if personal else "")
+    )
+    expenses_expression = (
+        f"-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} "
+        "THEN amount_cents ELSE 0 END)"
+    )
+    fixed_expression = (
+        f"-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} "
+        "AND expense_type='fixed' THEN amount_cents ELSE 0 END)"
+    )
+    variable_expression = (
+        f"-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} "
+        "AND expense_type='variable' THEN amount_cents ELSE 0 END)"
+    )
+    if personal:
+        expenses_expression += (
+            f"-SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND {reimbursement_filter} "
+            "THEN amount_cents ELSE 0 END)"
+        )
+        fixed_expression += (
+            "-SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND category='Wohnen' "
+            "THEN amount_cents ELSE 0 END)"
+        )
+        variable_expression += (
+            "-SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND category='Haushalt' "
+            "THEN amount_cents ELSE 0 END)"
+        )
+    category_amount_expression = (
+        f"{-1 if personal else 0} * SUM(CASE WHEN t.amount_cents > 0 THEN t.amount_cents ELSE 0 END)"
+        " - SUM(CASE WHEN t.amount_cents < 0 THEN t.amount_cents ELSE 0 END)"
+    )
     source_sql, source_params = source_clause(source)
     source_sql_t, source_params_t = source_clause(source, "t")
     with connect() as conn:
         totals = conn.execute(
             f"""
             SELECT
-                COALESCE(SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND NOT {special_filter} THEN amount_cents ELSE 0 END), 0) income,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} THEN amount_cents ELSE 0 END), 0) expenses,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} AND expense_type='fixed' THEN amount_cents ELSE 0 END), 0) fixed,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} AND expense_type='variable' THEN amount_cents ELSE 0 END), 0) variable,
+                COALESCE(SUM(CASE WHEN {income_condition} THEN amount_cents ELSE 0 END), 0) income,
+                COALESCE({expenses_expression}, 0) expenses,
+                COALESCE({fixed_expression}, 0) fixed,
+                COALESCE({variable_expression}, 0) variable,
                 COUNT(*) count
             FROM transactions WHERE booked_on >= ? AND booked_on < ? {source_sql}
             """,
@@ -551,19 +589,23 @@ def dashboard(month: str | None, source: str | None = None) -> dict:
         ).fetchone()
         categories = conn.execute(
             f"""
-            SELECT t.category, c.color, -SUM(t.amount_cents) amount_cents, COUNT(*) count
+            SELECT t.category, c.color,
+                {category_amount_expression} amount_cents,
+                COUNT(*) count
             FROM transactions t JOIN categories c ON c.name=t.category
-            WHERE t.booked_on >= ? AND t.booked_on < ? AND t.amount_cents < 0
+            WHERE t.booked_on >= ? AND t.booked_on < ?
+                AND (t.amount_cents < 0 {"OR (" + reimbursement_filter_t + " AND t.amount_cents > 0)" if personal else ""})
                 AND t.is_transfer=0 AND NOT {special_filter_t} {source_sql_t}
-            GROUP BY t.category, c.color ORDER BY amount_cents DESC
+            GROUP BY t.category, c.color
+            HAVING {category_amount_expression} > 0 ORDER BY amount_cents DESC
             """,
             (start, end, *source_params_t),
         ).fetchall()
         months = conn.execute(
             f"""
             SELECT substr(booked_on, 1, 7) month,
-                SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND NOT {special_filter} THEN amount_cents ELSE 0 END) income,
-                -SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} THEN amount_cents ELSE 0 END) expenses
+                SUM(CASE WHEN {income_condition} THEN amount_cents ELSE 0 END) income,
+                {expenses_expression} expenses
             FROM transactions WHERE 1=1 {source_sql}
             GROUP BY substr(booked_on, 1, 7) ORDER BY month DESC LIMIT 12
             """,
@@ -594,6 +636,70 @@ def dashboard(month: str | None, source: str | None = None) -> dict:
         ],
         "uncategorized": uncategorized,
         "source": source if source in {"sparkasse", "n26", "paypal"} else "",
+        "view": "personal" if personal else "gross",
+    }
+
+
+def parse_range(start_value: str | None, end_value: str | None) -> tuple[str, str]:
+    try:
+        start = date.fromisoformat(start_value or "")
+        end = date.fromisoformat(end_value or "")
+    except ValueError as exc:
+        raise ValueError("Start- und Enddatum sind erforderlich.") from exc
+    if end < start:
+        raise ValueError("Das Enddatum muss nach dem Startdatum liegen.")
+    return start.isoformat(), (end + timedelta(days=1)).isoformat()
+
+
+def shared_household(start_value: str | None, end_value: str | None) -> dict:
+    start, end = parse_range(start_value, end_value)
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT category,
+                COALESCE(-SUM(CASE WHEN amount_cents < 0 THEN amount_cents ELSE 0 END), 0) paid_cents,
+                COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0) received_cents,
+                COUNT(*) count
+            FROM transactions
+            WHERE booked_on >= ? AND booked_on < ?
+                AND category IN ('Wohnen', 'Haushalt') AND is_transfer=0
+            GROUP BY category ORDER BY category DESC
+            """,
+            (start, end),
+        ).fetchall()
+        transactions = conn.execute(
+            """
+            SELECT * FROM transactions
+            WHERE booked_on >= ? AND booked_on < ?
+                AND category IN ('Wohnen', 'Haushalt') AND is_transfer=0
+            ORDER BY booked_on DESC, id DESC LIMIT 1000
+            """,
+            (start, end),
+        ).fetchall()
+    breakdown = []
+    for category in ("Wohnen", "Haushalt"):
+        row = next((item for item in rows if item["category"] == category), None)
+        paid = row["paid_cents"] if row else 0
+        received = row["received_cents"] if row else 0
+        breakdown.append(
+            {
+                "category": category,
+                "paid": paid / 100,
+                "received": received / 100,
+                "net": (paid - received) / 100,
+                "count": row["count"] if row else 0,
+            }
+        )
+    paid = sum(item["paid"] for item in breakdown)
+    received = sum(item["received"] for item in breakdown)
+    return {
+        "start": start,
+        "end": (date.fromisoformat(end) - timedelta(days=1)).isoformat(),
+        "paid": paid,
+        "received": received,
+        "net": paid - received,
+        "categories": breakdown,
+        "transactions": [row_dict(row) for row in transactions],
     }
 
 
@@ -745,7 +851,7 @@ def disable_category(category: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.3"
+    server_version = "MoneyMap/0.4"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -793,6 +899,14 @@ class Handler(BaseHTTPRequestHandler):
                     dashboard(
                         query.get("month", [None])[0],
                         query.get("source", [""])[0],
+                        query.get("view", [""])[0],
+                    )
+                )
+            elif parsed.path == "/api/shared-household":
+                self.send_json(
+                    shared_household(
+                        query.get("start", [None])[0],
+                        query.get("end", [None])[0],
                     )
                 )
             elif parsed.path == "/api/investments":

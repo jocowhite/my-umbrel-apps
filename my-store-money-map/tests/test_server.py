@@ -135,6 +135,48 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(app.dashboard("2026-06", "sparkasse")["totals"]["expenses"], 20)
         self.assertEqual(app.dashboard("2026-06", "n26")["totals"]["expenses"], 15)
 
+    def test_personal_dashboard_nets_shared_household_income(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-01,Vermieter,Bank Transfer,Miete,-1000.00\n"
+            "2026-06-03,Mitbewohner,Bank Transfer,Mietanteil,450.00\n"
+            "2026-06-04,Arbeitgeber,Bank Transfer,Gehalt,2000.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        with app.connect() as conn:
+            conn.execute(
+                "UPDATE transactions SET category='Wohnen', is_manual=1 WHERE payee IN ('Vermieter','Mitbewohner')"
+            )
+        gross = app.dashboard("2026-06", view="gross")
+        personal = app.dashboard("2026-06", view="personal")
+        self.assertEqual(gross["totals"]["income"], 2450)
+        self.assertEqual(gross["totals"]["expenses"], 1000)
+        self.assertEqual(personal["totals"]["income"], 2000)
+        self.assertEqual(personal["totals"]["expenses"], 550)
+        housing = next(row for row in personal["categories"] if row["category"] == "Wohnen")
+        self.assertEqual(housing["amount"], 550)
+
+    def test_shared_household_supports_cross_month_date_ranges(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2025-12-15,Vermieter,Bank Transfer,Miete,-1000.00\n"
+            "2026-01-03,Mitbewohner,Bank Transfer,Mietanteil,450.00\n"
+            "2026-01-10,Stadtwerke,Debit,Nebenkosten,-120.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        with app.connect() as conn:
+            conn.execute(
+                "UPDATE transactions SET category='Wohnen', is_manual=1 WHERE payee IN ('Vermieter','Mitbewohner')"
+            )
+            conn.execute(
+                "UPDATE transactions SET category='Haushalt', is_manual=1 WHERE payee='Stadtwerke'"
+            )
+        result = app.shared_household("2025-12-01", "2026-01-31")
+        self.assertEqual(result["paid"], 1120)
+        self.assertEqual(result["received"], 450)
+        self.assertEqual(result["net"], 670)
+        self.assertEqual(len(result["transactions"]), 3)
+
     def test_outlays_are_balanced_and_excluded_from_dashboard(self):
         raw = (
             "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"

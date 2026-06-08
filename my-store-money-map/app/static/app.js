@@ -1,4 +1,4 @@
-const state={month:new Date().toISOString().slice(0,7),source:"",categories:[],transactions:[]};
+const state={month:new Date().toISOString().slice(0,7),source:"",dashboardMode:"gross",categories:[],transactions:[]};
 const money=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
 const qs=s=>document.querySelector(s);
 const qsa=s=>[...document.querySelectorAll(s)];
@@ -25,15 +25,20 @@ async function loadCategories(){
 }
 
 async function loadDashboard(){
-  const data=await api(`/api/dashboard?month=${state.month}&source=${encodeURIComponent(state.source)}`);
+  const data=await api(`/api/dashboard?month=${state.month}&source=${encodeURIComponent(state.source)}&view=${state.dashboardMode}`);
   qs("#income").textContent=money.format(data.totals.income);
   qs("#expenses").textContent=money.format(data.totals.expenses);
   qs("#balance").textContent=money.format(data.balance);
+  qs("#expenses-label").textContent=state.dashboardMode==="personal"?"Persoenliche Nettokosten":"Ausgaben";
+  qs("#expenses-note").textContent=state.dashboardMode==="personal"?"WG-Einnahmen bereits abgezogen":"ohne interne Transfers";
+  qs("#balance-note").textContent=state.dashboardMode==="personal"?"Einnahmen minus persoenliche Nettokosten":"Einnahmen minus Ausgaben";
   qs("#uncategorized").textContent=data.uncategorized;
   qs("#fixed").textContent=money.format(data.totals.fixed);
   qs("#variable").textContent=money.format(data.totals.variable);
-  const cost=data.totals.fixed+data.totals.variable;
-  const share=cost?Math.round(data.totals.fixed/cost*100):0;
+  const fixed=Math.max(0,data.totals.fixed);
+  const variable=Math.max(0,data.totals.variable);
+  const cost=fixed+variable;
+  const share=cost?Math.round(fixed/cost*100):0;
   qs("#fixed-share").textContent=`${share}%`;
   qs("#cost-donut").style.background=`conic-gradient(var(--purple) 0 ${share}%,#d8dcff ${share}% 100%)`;
   const max=Math.max(...data.categories.map(c=>c.amount),1);
@@ -41,6 +46,24 @@ async function loadDashboard(){
     <div class="category-row"><label>${escapeHtml(c.category)}</label><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,c.amount/max*100)}%;background:${c.color}"></div></div><strong>${money.format(c.amount)}</strong></div>`).join(""):'<p class="hint">Fuer diesen Monat sind noch keine Ausgaben vorhanden.</p>';
   const monthMax=Math.max(...data.months.flatMap(m=>[m.income,m.expenses]),1);
   qs("#timeline").innerHTML=data.months.map(m=>`<div class="month-col" title="${m.month}: ${money.format(m.income)} rein, ${money.format(m.expenses)} raus"><div class="bars"><i style="height:${m.income/monthMax*100}%"></i><i class="out" style="height:${m.expenses/monthMax*100}%"></i></div><span>${m.month.slice(5)}</span></div>`).join("");
+}
+
+async function loadSharedHousehold(){
+  const start=qs("#wg-start").value;
+  const end=qs("#wg-end").value;
+  const data=await api(`/api/shared-household?start=${start}&end=${end}`);
+  qs("#wg-paid").textContent=money.format(data.paid);
+  qs("#wg-received").textContent=money.format(data.received);
+  qs("#wg-net").textContent=money.format(data.net);
+  qs("#wg-breakdown").innerHTML=data.categories.map(c=>`
+    <article class="panel wg-category">
+      <p class="eyebrow">${escapeHtml(c.category.toUpperCase())}</p>
+      <div><span>Gezahlt</span><strong>${money.format(c.paid)}</strong></div>
+      <div><span>Erhalten</span><strong class="positive">${money.format(c.received)}</strong></div>
+      <div class="wg-net"><span>Dein Anteil</span><strong>${money.format(c.net)}</strong></div>
+    </article>`).join("");
+  qs("#wg-rows").innerHTML=data.transactions.length?data.transactions.map(t=>`
+    <tr><td>${formatDate(t.booked_on)}</td><td class="transaction-main"><strong>${escapeHtml(t.payee||t.booking_type||"Buchung")}</strong><span>${escapeHtml(t.description||"")}</span></td><td><span class="pill">${escapeHtml(t.category)}</span></td><td>${escapeHtml(sourceName(t.source))}</td><td class="amount ${t.amount>0?"positive":""}">${money.format(t.amount)}</td></tr>`).join(""):'<tr><td colspan="5" class="hint">Keine WG-Buchungen in diesem Zeitraum.</td></tr>';
 }
 
 async function loadTransactions(){
@@ -155,8 +178,11 @@ async function upload(){
 
 async function init(){
   qs("#month").value=state.month;
+  const today=new Date();
+  qs("#wg-start").value=`${today.getFullYear()}-01-01`;
+  qs("#wg-end").value=today.toISOString().slice(0,10);
   await loadCategories();
-  await Promise.all([loadDashboard(),loadTransactions(),loadInvestments(),loadOutlays(),loadRules(),loadCategoryUsage(),loadImports()]);
+  await Promise.all([loadDashboard(),loadSharedHousehold(),loadTransactions(),loadInvestments(),loadOutlays(),loadRules(),loadCategoryUsage(),loadImports()]);
   qsa(".nav").forEach(button=>button.addEventListener("click",()=>{
     qsa(".nav,.view").forEach(el=>el.classList.remove("active"));button.classList.add("active");qs(`#${button.dataset.view}`).classList.add("active");
     qs("#page-title").textContent=button.textContent;
@@ -166,6 +192,13 @@ async function init(){
   }));
   qs("#month").addEventListener("change",async e=>{state.month=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
   qs("#source-filter").addEventListener("change",async e=>{state.source=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
+  qsa(".dashboard-mode").forEach(button=>button.addEventListener("click",async()=>{
+    qsa(".dashboard-mode").forEach(item=>item.classList.remove("active"));
+    button.classList.add("active");
+    state.dashboardMode=button.dataset.mode;
+    await loadDashboard();
+  }));
+  qs("#wg-apply").addEventListener("click",()=>loadSharedHousehold().catch(error=>toast(error.message)));
   let timer;qs("#search").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(loadTransactions,250)});
   qs("#category-filter").addEventListener("change",loadTransactions);
   qs("#transaction-rows").addEventListener("click",e=>{const button=e.target.closest(".make-rule");if(button)openRule(state.transactions.find(t=>t.id===Number(button.dataset.id))).catch(error=>toast(error.message))});

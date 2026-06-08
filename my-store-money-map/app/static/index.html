@@ -16,6 +16,7 @@
     <nav>
       <button class="nav active" data-view="dashboard">Uebersicht</button>
       <button class="nav" data-view="transactions">Buchungen</button>
+      <button class="nav" data-view="shared-household">WG-Kosten</button>
       <button class="nav" data-view="investments">Investments</button>
       <button class="nav" data-view="outlays">Auslagen</button>
       <button class="nav" data-view="rules">Regeln</button>
@@ -41,10 +42,14 @@
     </header>
 
     <section id="dashboard" class="view active">
+      <div class="view-toggle">
+        <button class="dashboard-mode active" data-mode="gross">Brutto</button>
+        <button class="dashboard-mode" data-mode="personal">Persoenlich (WG verrechnet)</button>
+      </div>
       <div class="cards">
         <article class="metric"><span>Einnahmen</span><strong id="income">0 EUR</strong><small>ohne interne Transfers</small></article>
-        <article class="metric"><span>Ausgaben</span><strong id="expenses">0 EUR</strong><small>ohne interne Transfers</small></article>
-        <article class="metric accent"><span>Monatssaldo</span><strong id="balance">0 EUR</strong><small>Einnahmen minus Ausgaben</small></article>
+        <article class="metric"><span id="expenses-label">Ausgaben</span><strong id="expenses">0 EUR</strong><small id="expenses-note">ohne interne Transfers</small></article>
+        <article class="metric accent"><span>Monatssaldo</span><strong id="balance">0 EUR</strong><small id="balance-note">Einnahmen minus Ausgaben</small></article>
         <article class="metric"><span>Noch offen</span><strong id="uncategorized">0</strong><small>unkategorisierte Buchungen</small></article>
       </div>
       <div class="grid two">
@@ -66,6 +71,29 @@
       <article class="panel">
         <div class="panel-head"><div><p class="eyebrow">KATEGORIEN</p><h2>Wofuer gibst du am meisten aus?</h2></div></div>
         <div id="category-bars" class="category-bars"></div>
+      </article>
+    </section>
+
+    <section id="shared-household" class="view">
+      <article class="panel range-panel">
+        <div>
+          <p class="eyebrow">ZEITRAUM</p>
+          <h2>WG-Kosten auswerten</h2>
+        </div>
+        <label>Von <input id="wg-start" type="date"></label>
+        <label>Bis <input id="wg-end" type="date"></label>
+        <button class="primary" id="wg-apply">Auswerten</button>
+      </article>
+      <div class="cards investment-cards">
+        <article class="metric"><span>Gezahlt</span><strong id="wg-paid">0 EUR</strong><small>Wohnen und Haushalt</small></article>
+        <article class="metric"><span>Erhalten</span><strong id="wg-received">0 EUR</strong><small>Miete und Erstattungen</small></article>
+        <article class="metric accent"><span>Dein Anteil</span><strong id="wg-net">0 EUR</strong><small>Gezahlt minus erhalten</small></article>
+      </div>
+      <div class="grid two" id="wg-breakdown"></div>
+      <article class="panel">
+        <div class="panel-head"><div><p class="eyebrow">BUCHUNGEN</p><h2>Wohnen und Haushalt</h2></div></div>
+        <p class="hint">Positive Buchungen unter Wohnen oder Haushalt werden als WG-Einnahmen verrechnet.</p>
+        <div class="table-wrap"><table><thead><tr><th>Datum</th><th>Buchung</th><th>Kategorie</th><th>Konto</th><th>Betrag</th></tr></thead><tbody id="wg-rows"></tbody></table></div>
       </article>
     </section>
 
