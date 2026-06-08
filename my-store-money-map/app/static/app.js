@@ -1,4 +1,4 @@
-const state={month:new Date().toISOString().slice(0,7),source:"",dashboardMode:"gross",categories:[],transactions:[]};
+const state={month:new Date().toISOString().slice(0,7),source:"",dashboardMode:"gross",categories:[],transactions:[],sankey:{data:null,expandedCategories:new Set(),expandedParties:new Set(),zoom:1,panX:0,panY:0,graph:null}};
 const money=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
 const qs=s=>document.querySelector(s);
 const qsa=s=>[...document.querySelectorAll(s)];
@@ -22,6 +22,9 @@ async function loadCategories(){
   const options=categoryOptions();
   qs("#category-filter").innerHTML=`<option value="">Alle Kategorien</option>${options}`;
   qs('#rule-form select[name="category"]').innerHTML=options;
+  qs("#sankey-categories").innerHTML=state.categories.map(c=>`
+    <label><input type="checkbox" name="sankey-category" value="${escapeHtml(c.name)}" checked>
+    <i style="background:${c.color}"></i>${escapeHtml(c.name)}</label>`).join("");
 }
 
 async function loadDashboard(){
@@ -128,6 +131,263 @@ async function loadImports(){
   qs("#import-history").innerHTML=rows.length?rows.map(r=>`<div class="import-row"><strong>${escapeHtml(r.filename)}<small> · ${r.source}</small></strong><span>${r.new_count} neu</span><span>${r.duplicate_count} doppelt</span><span>${r.imported_at.slice(0,16)}</span></div>`).join(""):'<p class="hint">Noch keine Dateien importiert.</p>';
 }
 
+function sankeySelected(name){return qsa(`input[name="${name}"]:checked`).map(input=>input.value)}
+function sankeyNodeId(value){return encodeURIComponent(value).replace(/%/g,"_")}
+function shortLabel(value,max=24){return value.length>max?`${value.slice(0,max-1)}…`:value}
+function sankeyTransactionLabel(transaction){
+  return `${formatDate(transaction.booked_on)} · ${transaction.description||transaction.booking_type||transaction.counterparty}`;
+}
+
+function buildSankeyGraph(){
+  const data=state.sankey.data;
+  const showIncome=qs("#sankey-income-toggle").checked;
+  const showExpenses=qs("#sankey-expense-toggle").checked;
+  const showTransfers=qs("#sankey-transfer-toggle").checked;
+  const nodes=new Map();
+  const links=new Map();
+  const accountBalances=new Map();
+  const addNode=(definition,transaction)=>{
+    if(!nodes.has(definition.id))nodes.set(definition.id,{...definition,transactions:new Set()});
+    if(transaction)nodes.get(definition.id).transactions.add(transaction.id);
+    return nodes.get(definition.id);
+  };
+  const addPath=(path,transaction,value)=>{
+    path.forEach(node=>addNode(node,transaction));
+    for(let index=0;index<path.length-1;index++){
+      const source=path[index],target=path[index+1],key=`${source.id}>${target.id}`;
+      if(!links.has(key))links.set(key,{id:key,source:source.id,target:target.id,value:0,color:source.color||target.color,transactions:new Set()});
+      const link=links.get(key);link.value+=value;if(transaction)link.transactions.add(transaction.id);
+    }
+  };
+  const transferGroups=new Map();
+  data.transactions.forEach(transaction=>{
+    if(transaction.is_transfer){
+      if(!showTransfers)return;
+      if(!transferGroups.has(transaction.transfer_group))transferGroups.set(transaction.transfer_group,[]);
+      transferGroups.get(transaction.transfer_group).push(transaction);
+      return;
+    }
+    const value=Math.abs(transaction.amount);
+    const direction=transaction.amount>0?"income":"expense";
+    if(direction==="income"&&!showIncome)return;
+    if(direction==="expense"&&!showExpenses)return;
+    const categoryId=`${direction}-category:${transaction.category}`;
+    const partyId=`${direction}-party:${transaction.category}:${transaction.counterparty}`;
+    const account={id:`account:${transaction.source}`,label:transaction.account_label,layer:3,type:"account",color:"#101828"};
+    if(!accountBalances.has(transaction.source))accountBalances.set(transaction.source,{account,income:0,expenses:0});
+    if(transaction.amount>0)accountBalances.get(transaction.source).income+=value;
+    else accountBalances.get(transaction.source).expenses+=value;
+    const category={id:categoryId,label:transaction.category,layer:direction==="income"?2:4,type:"category",color:transaction.color,direction};
+    const party={id:partyId,label:transaction.counterparty,layer:direction==="income"?1:5,type:"party",color:transaction.color,direction,parent:categoryId};
+    const detail={id:`transaction:${transaction.id}`,label:sankeyTransactionLabel(transaction),layer:direction==="income"?0:6,type:"transaction",color:transaction.color,direction,parent:partyId};
+    if(direction==="income"){
+      const path=[category,account];
+      if(state.sankey.expandedCategories.has(categoryId))path.unshift(party);
+      if(state.sankey.expandedParties.has(partyId))path.unshift(detail);
+      addPath(path,transaction,value);
+    }else{
+      const path=[account,category];
+      if(state.sankey.expandedCategories.has(categoryId))path.push(party);
+      if(state.sankey.expandedParties.has(partyId))path.push(detail);
+      addPath(path,transaction,value);
+    }
+  });
+  if(showIncome&&showExpenses){
+    accountBalances.forEach(balance=>{
+      const difference=balance.income-balance.expenses;
+      if(Math.abs(difference)<.005)return;
+      if(difference>0)addPath([
+        balance.account,
+        {id:`balance:${balance.account.id}:positive`,label:"Zeitraumueberschuss",layer:4,type:"balance",color:"#1f9d73"}
+      ],null,difference);
+      else addPath([
+        {id:`balance:${balance.account.id}:negative`,label:"Aus Startbestand / Ruecklagen",layer:2,type:"balance",color:"#f59e0b"},
+        balance.account
+      ],null,-difference);
+    });
+  }
+  transferGroups.forEach((group,groupId)=>{
+    const outgoing=group.find(item=>item.amount<0);
+    const incoming=group.find(item=>item.amount>0);
+    if(!outgoing&&!incoming)return;
+    const value=Math.abs((outgoing||incoming).amount);
+    const from=outgoing?.account_label||"Anderes eigenes Konto";
+    const to=incoming?.account_label||"Anderes eigenes Konto";
+    addPath([
+      {id:`account:${outgoing?.source||"external"}`,label:from,layer:3,type:"account",color:"#101828"},
+      {id:`transfer:${groupId}`,label:`Transfer → ${to}`,layer:4,type:"transfer",color:"#94a3b8"}
+    ],outgoing||incoming,value);
+  });
+  const transactionById=new Map(data.transactions.map(transaction=>[transaction.id,transaction]));
+  return {
+    nodes:[...nodes.values()].map(node=>({...node,transactions:[...node.transactions].map(id=>transactionById.get(id)).filter(Boolean)})),
+    links:[...links.values()].map(link=>({...link,transactions:[...link.transactions].map(id=>transactionById.get(id)).filter(Boolean)}))
+  };
+}
+
+function layoutSankey(graph){
+  const layers=new Map();
+  graph.nodes.forEach(node=>{if(!layers.has(node.layer))layers.set(node.layer,[]);layers.get(node.layer).push(node)});
+  graph.links.forEach(link=>{
+    link.sourceNode=graph.nodes.find(node=>node.id===link.source);
+    link.targetNode=graph.nodes.find(node=>node.id===link.target);
+    link.sourceNode.outgoing=(link.sourceNode.outgoing||0)+link.value;
+    link.targetNode.incoming=(link.targetNode.incoming||0)+link.value;
+  });
+  graph.nodes.forEach(node=>node.value=Math.max(node.incoming||0,node.outgoing||0));
+  layers.forEach(nodes=>nodes.sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label,"de")));
+  const maxNodes=Math.max(...[...layers.values()].map(nodes=>nodes.length),1);
+  const height=Math.max(640,maxNodes*24+105);
+  const width=Math.max(1150,Math.max(...layers.keys())*250+260),nodeWidth=16,gap=10,top=55;
+  let scale=Infinity;
+  layers.forEach(nodes=>{
+    const total=nodes.reduce((sum,node)=>sum+node.value,0);
+    const available=height-top-30-gap*Math.max(0,nodes.length-1)-8*nodes.length;
+    if(total)scale=Math.min(scale,Math.max(.02,available/total));
+  });
+  if(!Number.isFinite(scale))scale=1;
+  layers.forEach((nodes,layer)=>{
+    const columnHeight=nodes.reduce((sum,node)=>sum+8+node.value*scale,0)+gap*Math.max(0,nodes.length-1);
+    let y=Math.max(top,top+(height-top-30-columnHeight)/2);
+    nodes.forEach(node=>{
+      node.x=45+layer*250;
+      node.y=y;
+      node.height=8+node.value*scale;
+      node.width=nodeWidth;
+      node.sourceOffset=4;
+      node.targetOffset=4;
+      y+=node.height+gap;
+    });
+  });
+  graph.links.sort((a,b)=>a.targetNode.y-b.targetNode.y);
+  graph.links.forEach(link=>{
+    link.width=Math.max(1,link.value*scale);
+    link.sy=link.sourceNode.y+link.sourceNode.sourceOffset+link.width/2;
+    link.ty=link.targetNode.y+link.targetNode.targetOffset+link.width/2;
+    link.sourceNode.sourceOffset+=link.width;
+    link.targetNode.targetOffset+=link.width;
+  });
+  return {width,height,layers};
+}
+
+function sankeyDetail(item){
+  const transactions=item.transactions||[];
+  const total=item.value||transactions.reduce((sum,transaction)=>sum+Math.abs(transaction.amount),0);
+  const sorted=[...transactions].sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount));
+  qs("#sankey-detail-title").textContent=item.label||"Geldstrom";
+  qs("#sankey-detail").innerHTML=`
+    <div class="sankey-detail-summary">
+      <div><span>Betrag</span><strong>${money.format(total)}</strong></div>
+      <div><span>Buchungen</span><strong>${transactions.length}</strong></div>
+      <div><span>Anteil am sichtbaren Volumen</span><strong>${state.sankey.data.summary.income+state.sankey.data.summary.expenses?Math.round(total/(state.sankey.data.summary.income+state.sankey.data.summary.expenses)*100):0}%</strong></div>
+    </div>
+    ${sorted.slice(0,100).map(transaction=>`<div class="sankey-detail-row"><span>${formatDate(transaction.booked_on)}</span><strong>${escapeHtml(transaction.counterparty)}<small>${escapeHtml(transaction.description||transaction.booking_type||"")}</small></strong><strong>${money.format(transaction.amount)}</strong></div>`).join("")}
+    ${sorted.length>100?`<p class="hint">Weitere ${sorted.length-100} Buchungen sind in dieser Summe enthalten.</p>`:""}`;
+}
+
+function applySankeyTransform(){
+  const viewport=qs("#sankey-viewport");if(!viewport)return;
+  viewport.setAttribute("transform",`translate(${state.sankey.panX} ${state.sankey.panY}) scale(${state.sankey.zoom})`);
+  qsa("[data-sankey-zoom='reset']").forEach(button=>button.textContent=`${Math.round(state.sankey.zoom*100)}%`);
+}
+
+function renderSankey(){
+  const graph=buildSankeyGraph();
+  state.sankey.graph=graph;
+  const svg=qs("#sankey-svg");
+  const empty=qs("#sankey-empty");
+  const visible=state.sankey.data.transactions.filter(transaction=>!transaction.is_transfer);
+  const income=qs("#sankey-income-toggle").checked?visible.filter(transaction=>transaction.amount>0).reduce((sum,transaction)=>sum+transaction.amount,0):0;
+  const expenses=qs("#sankey-expense-toggle").checked?visible.filter(transaction=>transaction.amount<0).reduce((sum,transaction)=>sum-transaction.amount,0):0;
+  qs("#sankey-income").textContent=money.format(income);
+  qs("#sankey-expenses").textContent=money.format(expenses);
+  qs("#sankey-balance").textContent=money.format(income-expenses);
+  if(!graph.links.length){
+    svg.innerHTML="";empty.classList.remove("hidden");return;
+  }
+  empty.classList.add("hidden");
+  const layout=layoutSankey(graph);
+  const layerNames={0:"EINZELBUCHUNGEN",1:"EINNAHMEQUELLEN",2:"EINNAHMEKATEGORIEN",3:"KONTEN",4:"AUSGABEKATEGORIEN",5:"EMPFAENGER",6:"EINZELBUCHUNGEN"};
+  svg.setAttribute("viewBox",`0 0 ${layout.width} ${layout.height}`);
+  const links=graph.links.map(link=>{
+    const bend=(link.targetNode.x-link.sourceNode.x)*.48;
+    const path=`M ${link.sourceNode.x+link.sourceNode.width} ${link.sy} C ${link.sourceNode.x+link.sourceNode.width+bend} ${link.sy}, ${link.targetNode.x-bend} ${link.ty}, ${link.targetNode.x} ${link.ty}`;
+    return `<path class="sankey-link" data-link="${escapeHtml(link.id)}" d="${path}" stroke="${link.color}" stroke-width="${link.width}"/>`;
+  }).join("");
+  const titles=[...layout.layers.keys()].sort((a,b)=>a-b).map(layer=>`<text class="sankey-column-title" x="${45+layer*250}" y="25">${layerNames[layer]}</text>`).join("");
+  const nodes=graph.nodes.map(node=>{
+    const expandable=node.type==="category"||node.type==="party";
+    const expanded=state.sankey.expandedCategories.has(node.id)||state.sankey.expandedParties.has(node.id);
+    const labelX=node.layer<=2?node.x-8:node.x+node.width+8;
+    const anchor=node.layer<=2?"end":"start";
+    return `<g class="sankey-node ${expandable?"expandable":""}" data-node="${escapeHtml(node.id)}">
+      <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="4" fill="${node.color}"/>
+      ${expandable&&node.height>=15?`<text class="expand-marker" x="${node.x+node.width/2}" y="${node.y+Math.min(node.height/2+4,15)}" text-anchor="middle">${expanded?"−":"+"}</text>`:""}
+      <text x="${labelX}" y="${node.y+Math.min(13,node.height/2)}" text-anchor="${anchor}">${escapeHtml(shortLabel(node.label))}</text>
+      <text class="node-value" x="${labelX}" y="${node.y+Math.min(27,node.height/2+14)}" text-anchor="${anchor}">${escapeHtml(money.format(node.value))}</text>
+    </g>`;
+  }).join("");
+  svg.innerHTML=`<g id="sankey-viewport">${titles}${links}${nodes}</g>`;
+  applySankeyTransform();
+  qsa(".sankey-node").forEach(element=>{
+    const node=graph.nodes.find(item=>item.id===element.dataset.node);
+    element.addEventListener("mouseenter",()=>sankeyDetail(node));
+    element.addEventListener("click",event=>{
+      event.stopPropagation();
+      if(node.type==="category"){
+        state.sankey.expandedCategories.has(node.id)?state.sankey.expandedCategories.delete(node.id):state.sankey.expandedCategories.add(node.id);
+        renderSankey();
+      }else if(node.type==="party"){
+        state.sankey.expandedParties.has(node.id)?state.sankey.expandedParties.delete(node.id):state.sankey.expandedParties.add(node.id);
+        renderSankey();
+      }else sankeyDetail(node);
+    });
+  });
+  qsa(".sankey-link").forEach(element=>{
+    const link=graph.links.find(item=>item.id===element.dataset.link);
+    element.addEventListener("mouseenter",()=>sankeyDetail({...link,label:`${link.sourceNode.label} → ${link.targetNode.label}`}));
+  });
+  applySankeySearch();
+  const detailCount=state.sankey.expandedCategories.size+state.sankey.expandedParties.size;
+  qs("#sankey-depth").textContent=detailCount?`${detailCount} Bereiche aufgeklappt`:"Kategorien sichtbar";
+}
+
+function applySankeySearch(){
+  const term=text_key_js(qs("#sankey-search").value);
+  const graph=state.sankey.graph;if(!graph)return;
+  const matching=new Set();
+  graph.nodes.forEach(node=>{
+    if(!term||text_key_js(node.label).includes(term)||node.transactions.some(transaction=>text_key_js(`${transaction.counterparty} ${transaction.description} ${transaction.category}`).includes(term)))matching.add(node.id);
+  });
+  qsa(".sankey-node").forEach(element=>element.classList.toggle("dim",term&&!matching.has(element.dataset.node)));
+  qsa(".sankey-link").forEach(element=>{
+    const link=graph.links.find(item=>item.id===element.dataset.link);
+    element.classList.toggle("dim",term&&!matching.has(link.source)&&!matching.has(link.target));
+  });
+}
+function text_key_js(value=""){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()}
+
+async function loadSankey(){
+  const sources=sankeySelected("sankey-source");
+  const categories=sankeySelected("sankey-category");
+  if(!sources.length){toast("Waehle mindestens ein Konto aus");return}
+  if(!categories.length){
+    state.sankey.data={summary:{income:0,expenses:0,balance:0,transfers:0,count:0},transactions:[]};
+  }else{
+    const params=new URLSearchParams({start:qs("#sankey-start").value,end:qs("#sankey-end").value,transfers:qs("#sankey-transfer-toggle").checked?"1":"0"});
+    sources.forEach(source=>params.append("source",source));
+    if(categories.length<state.categories.length)categories.forEach(category=>params.append("category",category));
+    state.sankey.data=await api(`/api/sankey?${params}`);
+  }
+  const summary=state.sankey.data.summary;
+  qs("#sankey-income").textContent=money.format(summary.income);
+  qs("#sankey-expenses").textContent=money.format(summary.expenses);
+  qs("#sankey-balance").textContent=money.format(summary.balance);
+  qs("#sankey-count").textContent=summary.count;
+  if(summary.truncated)toast("Das Diagramm zeigt die ersten 5.000 Buchungen dieses Filters");
+  renderSankey();
+}
+
 async function openRule(transaction){
   const form=qs("#rule-form");
   form.reset();
@@ -181,14 +441,17 @@ async function init(){
   const today=new Date();
   qs("#wg-start").value=`${today.getFullYear()}-01-01`;
   qs("#wg-end").value=today.toISOString().slice(0,10);
+  qs("#sankey-start").value=`${today.getFullYear()}-01-01`;
+  qs("#sankey-end").value=today.toISOString().slice(0,10);
   await loadCategories();
-  await Promise.all([loadDashboard(),loadSharedHousehold(),loadTransactions(),loadInvestments(),loadOutlays(),loadRules(),loadCategoryUsage(),loadImports()]);
+  await Promise.all([loadDashboard(),loadSankey(),loadSharedHousehold(),loadTransactions(),loadInvestments(),loadOutlays(),loadRules(),loadCategoryUsage(),loadImports()]);
   qsa(".nav").forEach(button=>button.addEventListener("click",()=>{
     qsa(".nav,.view").forEach(el=>el.classList.remove("active"));button.classList.add("active");qs(`#${button.dataset.view}`).classList.add("active");
     qs("#page-title").textContent=button.textContent;
     const filtered=["dashboard","transactions"].includes(button.dataset.view);
     qs("#month").parentElement.style.display=filtered?"flex":"none";
     qs("#source-filter").parentElement.style.display=filtered?"flex":"none";
+    if(button.dataset.view==="cashflow")setTimeout(()=>renderSankey(),0);
   }));
   qs("#month").addEventListener("change",async e=>{state.month=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
   qs("#source-filter").addEventListener("change",async e=>{state.source=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
@@ -201,6 +464,44 @@ async function init(){
   qs("#wg-apply").addEventListener("click",()=>loadSharedHousehold().catch(error=>toast(error.message)));
   let timer;qs("#search").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(loadTransactions,250)});
   qs("#category-filter").addEventListener("change",loadTransactions);
+  qs("#sankey-apply").addEventListener("click",()=>loadSankey().catch(error=>toast(error.message)));
+  qs("#sankey-collapse").addEventListener("click",()=>{
+    state.sankey.expandedCategories.clear();state.sankey.expandedParties.clear();renderSankey();
+  });
+  const updateCategoryCount=()=>{
+    const selected=sankeySelected("sankey-category").length;
+    qs("#sankey-category-count").textContent=selected===state.categories.length?"Alle":`${selected} von ${state.categories.length}`;
+  };
+  qs("#sankey-categories").addEventListener("change",updateCategoryCount);
+  qs("#sankey-category-all").addEventListener("click",()=>{qsa('input[name="sankey-category"]').forEach(input=>input.checked=true);updateCategoryCount()});
+  qs("#sankey-category-none").addEventListener("click",()=>{qsa('input[name="sankey-category"]').forEach(input=>input.checked=false);updateCategoryCount()});
+  qs("#sankey-income-toggle").addEventListener("change",renderSankey);
+  qs("#sankey-expense-toggle").addEventListener("change",renderSankey);
+  qs("#sankey-transfer-toggle").addEventListener("change",()=>loadSankey().catch(error=>toast(error.message)));
+  qs("#sankey-search").addEventListener("input",applySankeySearch);
+  qsa("[data-sankey-zoom]").forEach(button=>button.addEventListener("click",()=>{
+    if(button.dataset.sankeyZoom==="in")state.sankey.zoom=Math.min(2.5,state.sankey.zoom*1.2);
+    else if(button.dataset.sankeyZoom==="out")state.sankey.zoom=Math.max(.45,state.sankey.zoom/1.2);
+    else{state.sankey.zoom=1;state.sankey.panX=0;state.sankey.panY=0}
+    applySankeyTransform();
+  }));
+  const sankeySvg=qs("#sankey-svg");
+  sankeySvg.addEventListener("wheel",event=>{
+    event.preventDefault();
+    state.sankey.zoom=Math.max(.45,Math.min(2.5,state.sankey.zoom*(event.deltaY<0?1.1:.9)));
+    applySankeyTransform();
+  },{passive:false});
+  let dragging=false,lastPoint=null;
+  sankeySvg.addEventListener("pointerdown",event=>{dragging=true;lastPoint={x:event.clientX,y:event.clientY};sankeySvg.setPointerCapture(event.pointerId);sankeySvg.classList.add("dragging")});
+  sankeySvg.addEventListener("pointermove",event=>{
+    if(!dragging)return;
+    const scale=sankeySvg.viewBox.baseVal.width/sankeySvg.clientWidth;
+    state.sankey.panX+=(event.clientX-lastPoint.x)*scale;
+    state.sankey.panY+=(event.clientY-lastPoint.y)*scale;
+    lastPoint={x:event.clientX,y:event.clientY};applySankeyTransform();
+  });
+  const stopDragging=()=>{dragging=false;lastPoint=null;sankeySvg.classList.remove("dragging")};
+  sankeySvg.addEventListener("pointerup",stopDragging);sankeySvg.addEventListener("pointercancel",stopDragging);
   qs("#transaction-rows").addEventListener("click",e=>{const button=e.target.closest(".make-rule");if(button)openRule(state.transactions.find(t=>t.id===Number(button.dataset.id))).catch(error=>toast(error.message))});
   qs("#transaction-rows").addEventListener("change",async e=>{
     const select=e.target.closest(".transaction-category");if(!select)return;

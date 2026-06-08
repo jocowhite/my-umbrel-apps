@@ -703,6 +703,88 @@ def shared_household(start_value: str | None, end_value: str | None) -> dict:
     }
 
 
+def sankey_data(
+    start_value: str | None,
+    end_value: str | None,
+    sources: list[str] | None = None,
+    categories: list[str] | None = None,
+    include_transfers: bool = False,
+) -> dict:
+    start, end = parse_range(start_value, end_value)
+    valid_sources = sorted(
+        {source for source in (sources or []) if source in {"sparkasse", "n26", "paypal"}}
+    )
+    selected_categories = sorted({category for category in (categories or []) if category})
+    clauses = ["t.booked_on >= ?", "t.booked_on < ?"]
+    params: list = [start, end]
+    if valid_sources:
+        placeholders = ",".join("?" for _ in valid_sources)
+        clauses.append(f"t.source IN ({placeholders})")
+        params.extend(valid_sources)
+    if selected_categories:
+        placeholders = ",".join("?" for _ in selected_categories)
+        clauses.append(f"t.category IN ({placeholders})")
+        params.extend(selected_categories)
+    if not include_transfers:
+        clauses.append("t.is_transfer=0")
+    with connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT t.*, c.color
+            FROM transactions t
+            JOIN categories c ON c.name=t.category
+            WHERE {' AND '.join(clauses)}
+            ORDER BY t.booked_on ASC, t.id ASC
+            LIMIT 5001
+            """,
+            params,
+        ).fetchall()
+    truncated = len(rows) > 5000
+    rows = rows[:5000]
+    transactions = []
+    income_cents = 0
+    expense_cents = 0
+    transfer_cents = 0
+    for row in rows:
+        item = row_dict(row)
+        item["counterparty"] = (
+            row["payee"].strip()
+            or row["booking_type"].strip()
+            or row["description"].strip()
+            or "Unbekannt"
+        )
+        item["account_label"] = {
+            "sparkasse": "Sparkasse",
+            "n26": "N26",
+            "paypal": "PayPal",
+        }.get(row["source"], row["source"].title() or "Unbekannt")
+        transactions.append(item)
+        if row["is_transfer"]:
+            transfer_cents += abs(row["amount_cents"])
+        elif row["amount_cents"] > 0:
+            income_cents += row["amount_cents"]
+        else:
+            expense_cents += -row["amount_cents"]
+    return {
+        "start": start,
+        "end": (date.fromisoformat(end) - timedelta(days=1)).isoformat(),
+        "filters": {
+            "sources": valid_sources,
+            "categories": selected_categories,
+            "include_transfers": include_transfers,
+        },
+        "summary": {
+            "income": income_cents / 100,
+            "expenses": expense_cents / 100,
+            "balance": (income_cents - expense_cents) / 100,
+            "transfers": transfer_cents / 200,
+            "count": len(transactions),
+            "truncated": truncated,
+        },
+        "transactions": transactions,
+    }
+
+
 def investments() -> dict:
     investment_filter = is_investment_sql("t")
     with connect() as conn:
@@ -851,7 +933,7 @@ def disable_category(category: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.4"
+    server_version = "MoneyMap/0.5"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -907,6 +989,16 @@ class Handler(BaseHTTPRequestHandler):
                     shared_household(
                         query.get("start", [None])[0],
                         query.get("end", [None])[0],
+                    )
+                )
+            elif parsed.path == "/api/sankey":
+                self.send_json(
+                    sankey_data(
+                        query.get("start", [None])[0],
+                        query.get("end", [None])[0],
+                        query.get("source", []),
+                        query.get("category", []),
+                        query.get("transfers", ["0"])[0] == "1",
                     )
                 )
             elif parsed.path == "/api/investments":

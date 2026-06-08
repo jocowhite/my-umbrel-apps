@@ -177,6 +177,43 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(result["net"], 670)
         self.assertEqual(len(result["transactions"]), 3)
 
+    def test_sankey_data_filters_and_includes_full_transaction_detail(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-05-31,Arbeitgeber,Bank Transfer,Gehalt,2000.00\n"
+            "2026-06-02,REWE,Card,Einkauf,-25.00\n"
+            "2026-06-03,CinemaxX,Card,Film,-15.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        result = app.sankey_data(
+            "2026-06-01", "2026-06-30", ["n26"], ["Lebensmittel"]
+        )
+        self.assertEqual(result["summary"]["income"], 0)
+        self.assertEqual(result["summary"]["expenses"], 25)
+        self.assertEqual(result["summary"]["count"], 1)
+        self.assertEqual(result["transactions"][0]["counterparty"], "REWE")
+        self.assertEqual(result["transactions"][0]["account_label"], "N26")
+        self.assertEqual(result["transactions"][0]["color"], "#25b986")
+
+    def test_sankey_transfers_are_optional(self):
+        sparkasse = (
+            "Buchungstag;Verwendungszweck;Beguenstigter/Zahlungspflichtiger;Betrag;Waehrung\n"
+            "01.06.2026;Umbuchung;N26;-100,00;EUR\n"
+        ).encode()
+        n26 = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-02,Test User,Bank Transfer,Umbuchung,100.00\n"
+        ).encode()
+        app.import_csv(sparkasse, "sparkasse", "sparkasse.csv")
+        app.import_csv(n26, "n26", "n26.csv")
+        hidden = app.sankey_data("2026-06-01", "2026-06-30")
+        visible = app.sankey_data(
+            "2026-06-01", "2026-06-30", include_transfers=True
+        )
+        self.assertEqual(hidden["summary"]["count"], 0)
+        self.assertEqual(visible["summary"]["count"], 2)
+        self.assertEqual(visible["summary"]["transfers"], 100)
+
     def test_outlays_are_balanced_and_excluded_from_dashboard(self):
         raw = (
             "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"

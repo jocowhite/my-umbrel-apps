@@ -15,6 +15,7 @@
     <div class="brand"><span class="brand-mark">M</span><div><strong>MoneyMap</strong><small>Deine Finanzen. Lokal.</small></div></div>
     <nav>
       <button class="nav active" data-view="dashboard">Uebersicht</button>
+      <button class="nav" data-view="cashflow">Geldfluss</button>
       <button class="nav" data-view="transactions">Buchungen</button>
       <button class="nav" data-view="shared-household">WG-Kosten</button>
       <button class="nav" data-view="investments">Investments</button>
@@ -72,6 +73,83 @@
         <div class="panel-head"><div><p class="eyebrow">KATEGORIEN</p><h2>Wofuer gibst du am meisten aus?</h2></div></div>
         <div id="category-bars" class="category-bars"></div>
       </article>
+    </section>
+
+    <section id="cashflow" class="view">
+      <article class="panel sankey-filter-panel">
+        <div class="sankey-filter-head">
+          <div><p class="eyebrow">INTERAKTIVER GELDFLUSS</p><h2>Zeitraum und Inhalt</h2></div>
+          <div class="sankey-actions">
+            <button class="secondary" id="sankey-collapse">Alles zuklappen</button>
+            <button class="primary" id="sankey-apply">Diagramm aktualisieren</button>
+          </div>
+        </div>
+        <div class="sankey-filters">
+          <label>Von <input id="sankey-start" type="date"></label>
+          <label>Bis <input id="sankey-end" type="date"></label>
+          <fieldset>
+            <legend>Konten</legend>
+            <label><input type="checkbox" name="sankey-source" value="sparkasse" checked> Sparkasse</label>
+            <label><input type="checkbox" name="sankey-source" value="n26" checked> N26</label>
+            <label><input type="checkbox" name="sankey-source" value="paypal" checked> PayPal</label>
+          </fieldset>
+          <fieldset>
+            <legend>Fluesse</legend>
+            <label><input id="sankey-income-toggle" type="checkbox" checked> Einnahmen</label>
+            <label><input id="sankey-expense-toggle" type="checkbox" checked> Ausgaben</label>
+            <label><input id="sankey-transfer-toggle" type="checkbox"> Interne Transfers</label>
+          </fieldset>
+          <details class="category-picker">
+            <summary>Kategorien auswaehlen <span id="sankey-category-count">Alle</span></summary>
+            <div class="category-picker-actions">
+              <button type="button" class="small-button" id="sankey-category-all">Alle</button>
+              <button type="button" class="small-button" id="sankey-category-none">Keine</button>
+            </div>
+            <div id="sankey-categories"></div>
+          </details>
+        </div>
+      </article>
+      <div class="cards sankey-cards">
+        <article class="metric"><span>Einnahmen</span><strong id="sankey-income">0 EUR</strong><small>im gewaehlten Zeitraum</small></article>
+        <article class="metric"><span>Ausgaben</span><strong id="sankey-expenses">0 EUR</strong><small>inklusive Sonderkategorien</small></article>
+        <article class="metric accent"><span>Nettofluss</span><strong id="sankey-balance">0 EUR</strong><small>Einnahmen minus Ausgaben</small></article>
+        <article class="metric"><span>Buchungen</span><strong id="sankey-count">0</strong><small id="sankey-depth">Kategorien sichtbar</small></article>
+      </div>
+      <article class="panel sankey-panel">
+        <div class="sankey-toolbar">
+          <div>
+            <p class="eyebrow">SANKEY-DIAGRAMM</p>
+            <h2>Vom Eingang bis zur einzelnen Buchung</h2>
+            <p class="hint">Klicke auf eine Kategorie oder Gegenpartei, um die naechste Detailstufe zu oeffnen. Ziehe zum Verschieben und nutze das Mausrad zum Zoomen.</p>
+          </div>
+          <label class="sankey-search">Im Diagramm suchen <input id="sankey-search" type="search" placeholder="Kategorie, Haendler, Buchung..."></label>
+        </div>
+        <div class="sankey-stage" id="sankey-stage">
+          <svg id="sankey-svg" role="img" aria-label="Interaktives Sankey-Diagramm deiner Geldfluesse"></svg>
+          <div class="sankey-empty hidden" id="sankey-empty">Fuer diese Filter gibt es keine sichtbaren Buchungen.</div>
+          <div class="sankey-zoom">
+            <button type="button" data-sankey-zoom="in" aria-label="Hineinzoomen">+</button>
+            <button type="button" data-sankey-zoom="out" aria-label="Herauszoomen">−</button>
+            <button type="button" data-sankey-zoom="reset">100%</button>
+          </div>
+        </div>
+      </article>
+      <div class="grid sankey-lower">
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">AUSWAHL</p><h2 id="sankey-detail-title">Diagramm erkunden</h2></div></div>
+          <div id="sankey-detail" class="sankey-detail">
+            <p class="hint">Bewege die Maus ueber einen Knoten oder Geldstrom, um Betrag, Anteil und enthaltene Buchungen zu sehen.</p>
+          </div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">LEGENDE</p><h2>Detailstufen</h2></div></div>
+          <ol class="sankey-legend">
+            <li><b>1</b><span>Kategorien zeigen die grobe Verteilung.</span></li>
+            <li><b>2</b><span>Aufgeklappte Kategorien zeigen Gegenparteien.</span></li>
+            <li><b>3</b><span>Aufgeklappte Gegenparteien zeigen jede Buchung.</span></li>
+          </ol>
+        </article>
+      </div>
     </section>
 
     <section id="shared-household" class="view">
