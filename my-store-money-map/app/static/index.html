@@ -159,10 +159,11 @@
       <label>Suchmuster<input name="pattern" required placeholder="z. B. Cinemax"></label>
       <div class="form-grid">
         <label>Logik<select name="match_type"><option value="keyword">Keyword</option><option value="regex">RegEx</option></select></label>
-        <label>Prioritaet<input name="priority" type="number" min="0" max="999" value="50"></label>
+        <label>Prioritaet<input name="priority" type="number" min="0" max="999" value="100"></label>
         <label>Kategorie<select name="category" required></select></label>
         <label>Kostentyp<select name="expense_type"><option value="variable">Variabel</option><option value="fixed">Fixkosten</option><option value="income">Einnahme</option></select></label>
       </div>
+      <div id="rule-conflicts" class="rule-conflicts hidden"></div>
       <div class="dialog-actions"><button type="button" data-close-dialog class="secondary">Abbrechen</button><button type="submit" class="primary">Regel speichern</button></div>
     </form>
   </dialog>

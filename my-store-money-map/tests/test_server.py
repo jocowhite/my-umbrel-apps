@@ -87,6 +87,19 @@ class MoneyMapTests(unittest.TestCase):
             row = conn.execute("SELECT * FROM transactions").fetchone()
         self.assertEqual(row["category"], "Reisen & Festivals")
 
+    def test_matching_rules_explain_priority_conflicts(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-02,DM Drogerie Stuttgart,Card,Einkauf,-25.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        with app.connect() as conn:
+            transaction_id = conn.execute("SELECT id FROM transactions").fetchone()["id"]
+        matches = app.matching_rules(transaction_id)
+        self.assertEqual(matches[0]["name"], "Drogerie")
+        self.assertEqual(matches[0]["category"], "Haushalt")
+        self.assertEqual(matches[0]["priority"], 80)
+
     def test_investments_are_tracked_separately_from_expenses(self):
         raw = (
             "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"

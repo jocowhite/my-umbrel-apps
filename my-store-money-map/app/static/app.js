@@ -105,14 +105,29 @@ async function loadImports(){
   qs("#import-history").innerHTML=rows.length?rows.map(r=>`<div class="import-row"><strong>${escapeHtml(r.filename)}<small> · ${r.source}</small></strong><span>${r.new_count} neu</span><span>${r.duplicate_count} doppelt</span><span>${r.imported_at.slice(0,16)}</span></div>`).join(""):'<p class="hint">Noch keine Dateien importiert.</p>';
 }
 
-function openRule(transaction){
+async function openRule(transaction){
   const form=qs("#rule-form");
   form.reset();
+  const conflicts=qs("#rule-conflicts");
+  conflicts.classList.add("hidden");
+  conflicts.innerHTML="";
   const selected=window.getSelection().toString().trim();
   const suggested=selected||transaction.payee||transaction.description.split(/\s+/).slice(0,3).join(" ");
   form.elements.pattern.value=suggested;
   form.elements.name.value=suggested;
   form.elements.expense_type.value=transaction.amount>0?"income":"variable";
+  if(transaction.category)form.elements.category.value=transaction.category;
+  form.elements.priority.value=100;
+  if(transaction.id){
+    const matches=await api(`/api/transactions/${transaction.id}/matching-rules`);
+    if(matches.length){
+      const highest=Math.max(...matches.map(rule=>rule.priority));
+      form.elements.priority.value=Math.min(999,Math.max(100,highest+10));
+      conflicts.classList.remove("hidden");
+      conflicts.innerHTML=`<strong>Bereits passende Regeln</strong>${matches.map(rule=>`
+        <span>${escapeHtml(rule.name)} → ${escapeHtml(rule.category)} (Prioritaet ${rule.priority})</span>`).join("")}<small>Die neue Regel wurde automatisch hoeher priorisiert.</small>`;
+    }
+  }
   qs("#rule-dialog").showModal();
 }
 
@@ -153,14 +168,14 @@ async function init(){
   qs("#source-filter").addEventListener("change",async e=>{state.source=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
   let timer;qs("#search").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(loadTransactions,250)});
   qs("#category-filter").addEventListener("change",loadTransactions);
-  qs("#transaction-rows").addEventListener("click",e=>{const button=e.target.closest(".make-rule");if(button)openRule(state.transactions.find(t=>t.id===Number(button.dataset.id)))});
+  qs("#transaction-rows").addEventListener("click",e=>{const button=e.target.closest(".make-rule");if(button)openRule(state.transactions.find(t=>t.id===Number(button.dataset.id))).catch(error=>toast(error.message))});
   qs("#transaction-rows").addEventListener("change",async e=>{
     const select=e.target.closest(".transaction-category");if(!select)return;
     await api(`/api/transactions/${select.dataset.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({category:select.value})});
     toast("Kategorie gespeichert");
     await Promise.all([loadTransactions(),loadDashboard(),loadInvestments(),loadOutlays(),loadCategoryUsage()]);
   });
-  qs("#new-rule").addEventListener("click",()=>openRule({payee:"",description:"",amount:-1}));
+  qs("#new-rule").addEventListener("click",()=>openRule({payee:"",description:"",amount:-1}).catch(error=>toast(error.message)));
   qs("#rule-form").addEventListener("submit",saveRule);
   qsa("[data-close-dialog]").forEach(button=>button.addEventListener("click",()=>qs("#rule-dialog").close()));
   qs("#rule-list").addEventListener("click",async e=>{const button=e.target.closest("[data-rule]");if(!button)return;if(!confirm("Diese Regel loeschen?"))return;await api(`/api/rules/${button.dataset.rule}`,{method:"DELETE"});toast("Regel geloescht");await Promise.all([loadRules(),loadTransactions(),loadDashboard()])});

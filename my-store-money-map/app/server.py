@@ -366,6 +366,29 @@ def category_for(conn: sqlite3.Connection, transaction: dict) -> tuple[str, str,
     return fallback
 
 
+def matching_rules(transaction_id: int) -> list[dict]:
+    with connect() as conn:
+        transaction = conn.execute(
+            "SELECT * FROM transactions WHERE id=?", (transaction_id,)
+        ).fetchone()
+        if not transaction:
+            raise ValueError("Buchung nicht gefunden.")
+        haystack = text_key(
+            " ".join(
+                [
+                    transaction["payee"],
+                    transaction["description"],
+                    transaction["booking_type"],
+                    transaction["iban"],
+                ]
+            )
+        )
+        rules = conn.execute(
+            "SELECT * FROM rules WHERE enabled=1 ORDER BY priority DESC, id ASC"
+        ).fetchall()
+    return [dict(rule) for rule in rules if rule_matches(rule, haystack)]
+
+
 def recategorize(conn: sqlite3.Connection) -> int:
     rows = conn.execute("SELECT * FROM transactions WHERE is_manual = 0 AND is_transfer = 0").fetchall()
     changed = 0
@@ -799,6 +822,8 @@ class Handler(BaseHTTPRequestHandler):
                         params,
                     ).fetchall()
                 self.send_json([row_dict(row) for row in rows])
+            elif match := re.fullmatch(r"/api/transactions/(\d+)/matching-rules", parsed.path):
+                self.send_json(matching_rules(int(match.group(1))))
             elif parsed.path == "/api/rules":
                 with connect() as conn:
                     rows = conn.execute("SELECT * FROM rules ORDER BY priority DESC, id").fetchall()
@@ -850,7 +875,7 @@ class Handler(BaseHTTPRequestHandler):
                             pattern,
                             data["category"],
                             data.get("expense_type", "variable"),
-                            int(data.get("priority", 50)),
+                            int(data.get("priority", 100)),
                             1 if data.get("enabled", True) else 0,
                         ),
                     )
