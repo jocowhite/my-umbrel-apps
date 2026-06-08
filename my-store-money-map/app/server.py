@@ -40,6 +40,11 @@ CATEGORIES = [
     ("Steuern & Gebuehren", "#8854d0"),
     ("Gehalt & Einkommen", "#0fb9b1"),
     ("Sonstige Einnahmen", "#26de81"),
+    ("Investieren", "#3448c5"),
+    ("Investieren · MSCI World", "#5267e8"),
+    ("Investieren · Bitcoin", "#f7931a"),
+    ("Investieren · Aktien", "#3b82f6"),
+    ("Investieren · Langzeitkonto", "#14b8a6"),
     ("Sonstiges", "#a5b1c2"),
     ("Interner Transfer", "#c7cbd6"),
 ]
@@ -477,35 +482,43 @@ def month_range(month: str | None) -> tuple[str, str]:
     return start.isoformat(), end.isoformat()
 
 
+def is_investment_sql(alias: str = "") -> str:
+    column = f"{alias}.category" if alias else "category"
+    return f"({column} = 'Investieren' OR {column} LIKE 'Investieren · %')"
+
+
 def dashboard(month: str | None) -> dict:
     start, end = month_range(month)
+    investment_filter = is_investment_sql()
+    investment_filter_t = is_investment_sql("t")
     with connect() as conn:
         totals = conn.execute(
-            """
+            f"""
             SELECT
-                COALESCE(SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 THEN amount_cents ELSE 0 END), 0) income,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 THEN amount_cents ELSE 0 END), 0) expenses,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND expense_type='fixed' THEN amount_cents ELSE 0 END), 0) fixed,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND expense_type='variable' THEN amount_cents ELSE 0 END), 0) variable,
+                COALESCE(SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND NOT {investment_filter} THEN amount_cents ELSE 0 END), 0) income,
+                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {investment_filter} THEN amount_cents ELSE 0 END), 0) expenses,
+                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {investment_filter} AND expense_type='fixed' THEN amount_cents ELSE 0 END), 0) fixed,
+                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {investment_filter} AND expense_type='variable' THEN amount_cents ELSE 0 END), 0) variable,
                 COUNT(*) count
             FROM transactions WHERE booked_on >= ? AND booked_on < ?
             """,
             (start, end),
         ).fetchone()
         categories = conn.execute(
-            """
+            f"""
             SELECT t.category, c.color, -SUM(t.amount_cents) amount_cents, COUNT(*) count
             FROM transactions t JOIN categories c ON c.name=t.category
-            WHERE t.booked_on >= ? AND t.booked_on < ? AND t.amount_cents < 0 AND t.is_transfer=0
+            WHERE t.booked_on >= ? AND t.booked_on < ? AND t.amount_cents < 0
+                AND t.is_transfer=0 AND NOT {investment_filter_t}
             GROUP BY t.category, c.color ORDER BY amount_cents DESC
             """,
             (start, end),
         ).fetchall()
         months = conn.execute(
-            """
+            f"""
             SELECT substr(booked_on, 1, 7) month,
-                SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 THEN amount_cents ELSE 0 END) income,
-                -SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 THEN amount_cents ELSE 0 END) expenses
+                SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND NOT {investment_filter} THEN amount_cents ELSE 0 END) income,
+                -SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {investment_filter} THEN amount_cents ELSE 0 END) expenses
             FROM transactions GROUP BY substr(booked_on, 1, 7) ORDER BY month DESC LIMIT 12
             """
         ).fetchall()
@@ -531,8 +544,61 @@ def dashboard(month: str | None) -> dict:
     }
 
 
+def investments() -> dict:
+    investment_filter = is_investment_sql("t")
+    with connect() as conn:
+        categories = conn.execute(
+            f"""
+            SELECT t.category, c.color,
+                COALESCE(-SUM(CASE WHEN t.amount_cents < 0 THEN t.amount_cents ELSE 0 END), 0) invested_cents,
+                COALESCE(SUM(CASE WHEN t.amount_cents > 0 THEN t.amount_cents ELSE 0 END), 0) returned_cents,
+                COUNT(*) count
+            FROM transactions t JOIN categories c ON c.name=t.category
+            WHERE {investment_filter} AND t.is_transfer=0
+            GROUP BY t.category, c.color ORDER BY invested_cents DESC
+            """
+        ).fetchall()
+        months = conn.execute(
+            f"""
+            SELECT substr(t.booked_on, 1, 7) month,
+                COALESCE(-SUM(CASE WHEN t.amount_cents < 0 THEN t.amount_cents ELSE 0 END), 0) invested_cents
+            FROM transactions t
+            WHERE {investment_filter} AND t.is_transfer=0
+            GROUP BY substr(t.booked_on, 1, 7) ORDER BY month
+            """
+        ).fetchall()
+        transactions = conn.execute(
+            f"""
+            SELECT t.* FROM transactions t
+            WHERE {investment_filter} AND t.is_transfer=0
+            ORDER BY t.booked_on DESC, t.id DESC LIMIT 100
+            """
+        ).fetchall()
+    invested_cents = sum(row["invested_cents"] for row in categories)
+    returned_cents = sum(row["returned_cents"] for row in categories)
+    return {
+        "invested": invested_cents / 100,
+        "returned": returned_cents / 100,
+        "net": (invested_cents - returned_cents) / 100,
+        "categories": [
+            {
+                **dict(row),
+                "label": row["category"].removeprefix("Investieren · "),
+                "invested": row["invested_cents"] / 100,
+                "returned": row["returned_cents"] / 100,
+            }
+            for row in categories
+        ],
+        "months": [
+            {"month": row["month"], "invested": row["invested_cents"] / 100}
+            for row in months
+        ],
+        "transactions": [row_dict(row) for row in transactions],
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.1"
+    server_version = "MoneyMap/0.2"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -577,6 +643,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True})
             elif parsed.path == "/api/dashboard":
                 self.send_json(dashboard(query.get("month", [None])[0]))
+            elif parsed.path == "/api/investments":
+                self.send_json(investments())
             elif parsed.path == "/api/transactions":
                 month = query.get("month", [None])[0]
                 start, end = month_range(month) if month else ("0000-01-01", "9999-12-31")

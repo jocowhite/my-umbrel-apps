@@ -9,6 +9,7 @@ Lokaler Personal Finance Manager fuer Umbrel.
 - Abgleich interner Transfers anhand von Gegenbuchungen
 - Keyword- und RegEx-Regeln fuer Kategorien
 - Trennung von Fixkosten, variablen Kosten und Einnahmen
+- Eigene Investment-Ansicht fuer MSCI World, Bitcoin, Aktien und Langzeitkonto
 - Monatsdashboard und installierbare PWA
 
 ## Lokal starten
@@ -21,5 +22,5 @@ Danach `http://localhost:8080` oeffnen.
 
 Das Umbrel-Paket verwendet ein offizielles Python-Alpine-Image. Beim ersten
 Start wird der zur App-Version passende Quellcode aus dem Git-Tag
-`money-map-v0.1.0` in das persistente App-Verzeichnis geladen. Weitere
+`money-map-v0.2.0` in das persistente App-Verzeichnis geladen. Weitere
 Container-Neustarts funktionieren aus dieser lokalen Kopie.

@@ -87,6 +87,27 @@ class MoneyMapTests(unittest.TestCase):
             row = conn.execute("SELECT * FROM transactions").fetchone()
         self.assertEqual(row["category"], "Reisen & Festivals")
 
+    def test_investments_are_tracked_separately_from_expenses(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-02,Trade Republic,Bank Transfer,ETF Sparplan,-100.00\n"
+            "2026-06-03,REWE,Card,Einkauf,-25.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        with app.connect() as conn:
+            transaction_id = conn.execute(
+                "SELECT id FROM transactions WHERE payee='Trade Republic'"
+            ).fetchone()["id"]
+            conn.execute(
+                "UPDATE transactions SET category='Investieren · MSCI World', is_manual=1 WHERE id=?",
+                (transaction_id,),
+            )
+        dashboard = app.dashboard("2026-06")
+        investments = app.investments()
+        self.assertEqual(dashboard["totals"]["expenses"], 25)
+        self.assertEqual(investments["invested"], 100)
+        self.assertEqual(investments["categories"][0]["label"], "MSCI World")
+
 
 if __name__ == "__main__":
     unittest.main()

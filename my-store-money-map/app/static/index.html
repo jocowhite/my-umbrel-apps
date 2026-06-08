@@ -16,6 +16,7 @@
     <nav>
       <button class="nav active" data-view="dashboard">Uebersicht</button>
       <button class="nav" data-view="transactions">Buchungen</button>
+      <button class="nav" data-view="investments">Investments</button>
       <button class="nav" data-view="rules">Regeln</button>
       <button class="nav" data-view="import">CSV importieren</button>
     </nav>
@@ -65,6 +66,28 @@
         </div>
         <p class="hint">Tipp: Markiere Text in einer Buchung und klicke auf „Regel“, um daraus direkt eine Zuordnung zu erstellen.</p>
         <div class="table-wrap"><table><thead><tr><th>Datum</th><th>Buchung</th><th>Kategorie</th><th>Art</th><th>Betrag</th><th></th></tr></thead><tbody id="transaction-rows"></tbody></table></div>
+      </article>
+    </section>
+
+    <section id="investments" class="view">
+      <div class="cards investment-cards">
+        <article class="metric accent"><span>Investiert</span><strong id="invested-total">0 EUR</strong><small>Einzahlungen insgesamt</small></article>
+        <article class="metric"><span>Rueckfluesse</span><strong id="investment-returns">0 EUR</strong><small>Auszahlungen und Verkaeufe</small></article>
+        <article class="metric"><span>Netto investiert</span><strong id="investment-net">0 EUR</strong><small>Einzahlungen minus Rueckfluesse</small></article>
+      </div>
+      <div class="grid two">
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">AUFTEILUNG</p><h2>Deine Investments</h2></div></div>
+          <div id="investment-breakdown" class="investment-breakdown"></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">VERLAUF</p><h2>Monatliche Einzahlungen</h2></div></div>
+          <div id="investment-timeline" class="timeline"></div>
+        </article>
+      </div>
+      <article class="panel">
+        <div class="panel-head"><div><p class="eyebrow">BUCHUNGEN</p><h2>Letzte Investment-Buchungen</h2></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Datum</th><th>Buchung</th><th>Investment</th><th>Betrag</th></tr></thead><tbody id="investment-rows"></tbody></table></div>
       </article>
     </section>
 

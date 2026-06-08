@@ -7,10 +7,17 @@ async function api(path,options={}){const res=await fetch(path,options);const da
 function toast(message){const el=qs("#toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2600)}
 function escapeHtml(value=""){return value.replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]))}
 function formatDate(value){return new Intl.DateTimeFormat("de-DE").format(new Date(value+"T12:00:00"))}
+function categoryOptions(selected=""){
+  const regular=state.categories.filter(c=>!c.name.startsWith("Investieren · "));
+  const investments=state.categories.filter(c=>c.name.startsWith("Investieren · "));
+  const options=regular.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===selected?"selected":""}>${escapeHtml(c.name)}</option>`).join("");
+  const investmentOptions=investments.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===selected?"selected":""}>${escapeHtml(c.name.replace("Investieren · ",""))}</option>`).join("");
+  return `${options}<optgroup label="Investieren">${investmentOptions}</optgroup>`;
+}
 
 async function loadCategories(){
   state.categories=await api("/api/categories");
-  const options=state.categories.map(c=>`<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join("");
+  const options=categoryOptions();
   qs("#category-filter").insertAdjacentHTML("beforeend",options);
   qs('#rule-form select[name="category"]').innerHTML=options;
 }
@@ -42,11 +49,25 @@ async function loadTransactions(){
     <tr>
       <td>${formatDate(t.booked_on)}</td>
       <td class="transaction-main"><strong>${escapeHtml(t.payee||t.booking_type||"Buchung")}</strong><span>${escapeHtml(t.description||t.booking_type||"")}</span></td>
-      <td><span class="pill ${t.is_transfer?"transfer":""}">${escapeHtml(t.category)}</span></td>
+      <td><select class="transaction-category" data-id="${t.id}" aria-label="Kategorie">${categoryOptions(t.category)}</select></td>
       <td>${t.is_transfer?"Transfer":t.expense_type==="fixed"?"Fixkosten":t.expense_type==="income"?"Einnahme":"Variabel"}</td>
       <td class="amount ${t.amount>0?"positive":""}">${money.format(t.amount)}</td>
       <td><button class="small-button make-rule" data-id="${t.id}">Regel</button></td>
     </tr>`).join("");
+}
+
+async function loadInvestments(){
+  const data=await api("/api/investments");
+  qs("#invested-total").textContent=money.format(data.invested);
+  qs("#investment-returns").textContent=money.format(data.returned);
+  qs("#investment-net").textContent=money.format(data.net);
+  const max=Math.max(...data.categories.map(c=>c.invested),1);
+  qs("#investment-breakdown").innerHTML=data.categories.length?data.categories.map(c=>`
+    <div class="investment-row"><i style="background:${c.color}"></i><div><strong>${escapeHtml(c.label)}</strong><span>${c.count} Buchungen</span></div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,c.invested/max*100)}%;background:${c.color}"></div></div><b>${money.format(c.invested)}</b></div>`).join(""):'<p class="hint">Ordne Buchungen einer Investment-Kategorie zu. Sie erscheinen dann automatisch hier.</p>';
+  const monthMax=Math.max(...data.months.map(m=>m.invested),1);
+  qs("#investment-timeline").innerHTML=data.months.length?data.months.slice(-12).map(m=>`<div class="month-col" title="${m.month}: ${money.format(m.invested)}"><div class="bars"><i class="investment-bar" style="height:${m.invested/monthMax*100}%"></i></div><span>${m.month.slice(5)}</span></div>`).join(""):'<p class="hint">Noch keine Investment-Einzahlungen vorhanden.</p>';
+  qs("#investment-rows").innerHTML=data.transactions.length?data.transactions.map(t=>`
+    <tr><td>${formatDate(t.booked_on)}</td><td class="transaction-main"><strong>${escapeHtml(t.payee||t.booking_type||"Buchung")}</strong><span>${escapeHtml(t.description||"")}</span></td><td><span class="pill investment">${escapeHtml(t.category.replace("Investieren · ",""))}</span></td><td class="amount ${t.amount>0?"positive":""}">${money.format(t.amount)}</td></tr>`).join(""):'<tr><td colspan="4" class="hint">Noch keine Investment-Buchungen vorhanden.</td></tr>';
 }
 
 async function loadRules(){
@@ -96,7 +117,7 @@ async function upload(){
 async function init(){
   qs("#month").value=state.month;
   await loadCategories();
-  await Promise.all([loadDashboard(),loadTransactions(),loadRules(),loadImports()]);
+  await Promise.all([loadDashboard(),loadTransactions(),loadInvestments(),loadRules(),loadImports()]);
   qsa(".nav").forEach(button=>button.addEventListener("click",()=>{
     qsa(".nav,.view").forEach(el=>el.classList.remove("active"));button.classList.add("active");qs(`#${button.dataset.view}`).classList.add("active");
     qs("#page-title").textContent=button.textContent;qs("#month").parentElement.style.display=["dashboard","transactions"].includes(button.dataset.view)?"flex":"none";
@@ -105,6 +126,12 @@ async function init(){
   let timer;qs("#search").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(loadTransactions,250)});
   qs("#category-filter").addEventListener("change",loadTransactions);
   qs("#transaction-rows").addEventListener("click",e=>{const button=e.target.closest(".make-rule");if(button)openRule(state.transactions.find(t=>t.id===Number(button.dataset.id)))});
+  qs("#transaction-rows").addEventListener("change",async e=>{
+    const select=e.target.closest(".transaction-category");if(!select)return;
+    await api(`/api/transactions/${select.dataset.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({category:select.value})});
+    toast("Kategorie gespeichert");
+    await Promise.all([loadTransactions(),loadDashboard(),loadInvestments()]);
+  });
   qs("#new-rule").addEventListener("click",()=>openRule({payee:"",description:"",amount:-1}));
   qs("#rule-form").addEventListener("submit",saveRule);
   qsa("[data-close-dialog]").forEach(button=>button.addEventListener("click",()=>qs("#rule-dialog").close()));
