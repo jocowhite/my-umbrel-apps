@@ -10,6 +10,9 @@ Lokaler Personal Finance Manager fuer Umbrel.
 - Keyword- und RegEx-Regeln fuer Kategorien
 - Trennung von Fixkosten, variablen Kosten und Einnahmen
 - Eigene Investment-Ansicht fuer MSCI World, Bitcoin, Aktien und Langzeitkonto
+- Quellenfilter fuer Sparkasse, N26 und PayPal
+- Auslagen-Abgleich sowie Kategorie Bargeld
+- Kategorienuebersicht nach Nutzung mit Aufraeumfunktion
 - Monatsdashboard und installierbare PWA
 
 ## Lokal starten
@@ -22,5 +25,5 @@ Danach `http://localhost:8080` oeffnen.
 
 Das Umbrel-Paket verwendet ein offizielles Python-Alpine-Image. Beim ersten
 Start wird der zur App-Version passende Quellcode aus dem Git-Tag
-`money-map-v0.2.0` in das persistente App-Verzeichnis geladen. Weitere
+`money-map-v0.3.0` in das persistente App-Verzeichnis geladen. Weitere
 Container-Neustarts funktionieren aus dieser lokalen Kopie.

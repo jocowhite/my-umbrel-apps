@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 PORT = int(os.getenv("PORT", "8080"))
@@ -40,6 +40,8 @@ CATEGORIES = [
     ("Steuern & Gebuehren", "#8854d0"),
     ("Gehalt & Einkommen", "#0fb9b1"),
     ("Sonstige Einnahmen", "#26de81"),
+    ("Bargeld", "#64748b"),
+    ("Auslagen", "#e11d48"),
     ("Investieren", "#3448c5"),
     ("Investieren · MSCI World", "#5267e8"),
     ("Investieren · Bitcoin", "#f7931a"),
@@ -113,7 +115,8 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS categories (
                 name TEXT PRIMARY KEY,
-                color TEXT NOT NULL
+                color TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1
             );
             CREATE TABLE IF NOT EXISTS rules (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,6 +165,11 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_transactions_transfer ON transactions(is_transfer, amount_cents, booked_on);
             """
         )
+        category_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(categories)").fetchall()
+        }
+        if "enabled" not in category_columns:
+            conn.execute("ALTER TABLE categories ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
         conn.executemany("INSERT OR IGNORE INTO categories(name, color) VALUES (?, ?)", CATEGORIES)
         if conn.execute("SELECT COUNT(*) FROM rules").fetchone()[0] == 0:
             conn.executemany(
@@ -487,43 +495,64 @@ def is_investment_sql(alias: str = "") -> str:
     return f"({column} = 'Investieren' OR {column} LIKE 'Investieren · %')"
 
 
-def dashboard(month: str | None) -> dict:
+def is_special_flow_sql(alias: str = "") -> str:
+    column = f"{alias}.category" if alias else "category"
+    return f"({is_investment_sql(alias)} OR {column} = 'Auslagen')"
+
+
+def source_clause(source: str | None, alias: str = "") -> tuple[str, list[str]]:
+    if source not in {"sparkasse", "n26", "paypal"}:
+        return "", []
+    column = f"{alias}.source" if alias else "source"
+    return f" AND {column} = ?", [source]
+
+
+def dashboard(month: str | None, source: str | None = None) -> dict:
     start, end = month_range(month)
-    investment_filter = is_investment_sql()
-    investment_filter_t = is_investment_sql("t")
+    special_filter = is_special_flow_sql()
+    special_filter_t = is_special_flow_sql("t")
+    source_sql, source_params = source_clause(source)
+    source_sql_t, source_params_t = source_clause(source, "t")
     with connect() as conn:
         totals = conn.execute(
             f"""
             SELECT
-                COALESCE(SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND NOT {investment_filter} THEN amount_cents ELSE 0 END), 0) income,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {investment_filter} THEN amount_cents ELSE 0 END), 0) expenses,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {investment_filter} AND expense_type='fixed' THEN amount_cents ELSE 0 END), 0) fixed,
-                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {investment_filter} AND expense_type='variable' THEN amount_cents ELSE 0 END), 0) variable,
+                COALESCE(SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND NOT {special_filter} THEN amount_cents ELSE 0 END), 0) income,
+                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} THEN amount_cents ELSE 0 END), 0) expenses,
+                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} AND expense_type='fixed' THEN amount_cents ELSE 0 END), 0) fixed,
+                COALESCE(-SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} AND expense_type='variable' THEN amount_cents ELSE 0 END), 0) variable,
                 COUNT(*) count
-            FROM transactions WHERE booked_on >= ? AND booked_on < ?
+            FROM transactions WHERE booked_on >= ? AND booked_on < ? {source_sql}
             """,
-            (start, end),
+            (start, end, *source_params),
         ).fetchone()
         categories = conn.execute(
             f"""
             SELECT t.category, c.color, -SUM(t.amount_cents) amount_cents, COUNT(*) count
             FROM transactions t JOIN categories c ON c.name=t.category
             WHERE t.booked_on >= ? AND t.booked_on < ? AND t.amount_cents < 0
-                AND t.is_transfer=0 AND NOT {investment_filter_t}
+                AND t.is_transfer=0 AND NOT {special_filter_t} {source_sql_t}
             GROUP BY t.category, c.color ORDER BY amount_cents DESC
             """,
-            (start, end),
+            (start, end, *source_params_t),
         ).fetchall()
         months = conn.execute(
             f"""
             SELECT substr(booked_on, 1, 7) month,
-                SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND NOT {investment_filter} THEN amount_cents ELSE 0 END) income,
-                -SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {investment_filter} THEN amount_cents ELSE 0 END) expenses
-            FROM transactions GROUP BY substr(booked_on, 1, 7) ORDER BY month DESC LIMIT 12
-            """
+                SUM(CASE WHEN amount_cents > 0 AND is_transfer=0 AND NOT {special_filter} THEN amount_cents ELSE 0 END) income,
+                -SUM(CASE WHEN amount_cents < 0 AND is_transfer=0 AND NOT {special_filter} THEN amount_cents ELSE 0 END) expenses
+            FROM transactions WHERE 1=1 {source_sql}
+            GROUP BY substr(booked_on, 1, 7) ORDER BY month DESC LIMIT 12
+            """,
+            source_params,
         ).fetchall()
         uncategorized = conn.execute(
-            "SELECT COUNT(*) FROM transactions WHERE category='Sonstiges' AND is_transfer=0"
+            f"""
+            SELECT COUNT(*) FROM transactions
+            WHERE category='Sonstiges' AND is_transfer=0
+                AND booked_on >= ? AND booked_on < ? {source_sql}
+            """,
+            (start, end, *source_params),
         ).fetchone()[0]
     return {
         "month": start[:7],
@@ -541,6 +570,7 @@ def dashboard(month: str | None) -> dict:
             for row in reversed(months)
         ],
         "uncategorized": uncategorized,
+        "source": source if source in {"sparkasse", "n26", "paypal"} else "",
     }
 
 
@@ -597,8 +627,102 @@ def investments() -> dict:
     }
 
 
+def outlays() -> dict:
+    with connect() as conn:
+        totals = conn.execute(
+            """
+            SELECT
+                COALESCE(-SUM(CASE WHEN amount_cents < 0 THEN amount_cents ELSE 0 END), 0) paid_cents,
+                COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0) reimbursed_cents
+            FROM transactions WHERE category='Auslagen' AND is_transfer=0
+            """
+        ).fetchone()
+        transaction_rows = conn.execute(
+            """
+            SELECT * FROM transactions
+            WHERE category='Auslagen' AND is_transfer=0
+            ORDER BY booked_on ASC, id ASC LIMIT 1000
+            """
+        ).fetchall()
+    transactions = [row_dict(row) for row in transaction_rows]
+    unmatched: list[dict] = []
+    for transaction in transactions:
+        transaction["outlay_status"] = "open"
+        if transaction["amount_cents"] < 0:
+            unmatched.append(transaction)
+            continue
+        candidates = [
+            item
+            for item in unmatched
+            if -item["amount_cents"] == transaction["amount_cents"]
+            and item["booked_on"] <= transaction["booked_on"]
+        ]
+        if not candidates:
+            transaction["outlay_status"] = "unassigned"
+            continue
+        matched = max(candidates, key=lambda item: (item["booked_on"], item["id"]))
+        matched["outlay_status"] = "settled"
+        transaction["outlay_status"] = "settled"
+        unmatched.remove(matched)
+    return {
+        "paid": totals["paid_cents"] / 100,
+        "reimbursed": totals["reimbursed_cents"] / 100,
+        "open": (totals["paid_cents"] - totals["reimbursed_cents"]) / 100,
+        "transactions": list(reversed(transactions[-200:])),
+    }
+
+
+def category_usage() -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.name, c.color, c.enabled,
+                COUNT(t.id) usage_count,
+                COALESCE(SUM(CASE WHEN t.amount_cents < 0 THEN -t.amount_cents ELSE 0 END), 0) spent_cents
+            FROM categories c
+            LEFT JOIN transactions t ON t.category=c.name
+            WHERE c.enabled=1
+            GROUP BY c.name, c.color, c.enabled
+            ORDER BY usage_count ASC, c.name ASC
+            """
+        ).fetchall()
+    protected = {"Sonstiges", "Sonstige Einnahmen", "Interner Transfer"}
+    return [
+        {
+            **dict(row),
+            "spent": row["spent_cents"] / 100,
+            "removable": row["name"] not in protected,
+        }
+        for row in rows
+    ]
+
+
+def disable_category(category: str) -> None:
+    if category in {"Sonstiges", "Sonstige Einnahmen", "Interner Transfer"}:
+        raise ValueError("Diese Systemkategorie kann nicht entfernt werden.")
+    with connect() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM categories WHERE name=? AND enabled=1", (category,)
+        ).fetchone()
+        if not exists:
+            raise ValueError("Kategorie nicht gefunden.")
+        conn.execute("DELETE FROM rules WHERE category=?", (category,))
+        conn.execute(
+            """
+            UPDATE transactions
+            SET category=CASE WHEN amount_cents > 0 THEN 'Sonstige Einnahmen' ELSE 'Sonstiges' END,
+                expense_type=CASE WHEN amount_cents > 0 THEN 'income' ELSE 'variable' END,
+                matched_rule_id=NULL, is_manual=0
+            WHERE category=?
+            """,
+            (category,),
+        )
+        conn.execute("UPDATE categories SET enabled=0 WHERE name=?", (category,))
+        recategorize(conn)
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.2"
+    server_version = "MoneyMap/0.3"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -642,19 +766,30 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/health":
                 self.send_json({"ok": True})
             elif parsed.path == "/api/dashboard":
-                self.send_json(dashboard(query.get("month", [None])[0]))
+                self.send_json(
+                    dashboard(
+                        query.get("month", [None])[0],
+                        query.get("source", [""])[0],
+                    )
+                )
             elif parsed.path == "/api/investments":
                 self.send_json(investments())
+            elif parsed.path == "/api/outlays":
+                self.send_json(outlays())
             elif parsed.path == "/api/transactions":
                 month = query.get("month", [None])[0]
                 start, end = month_range(month) if month else ("0000-01-01", "9999-12-31")
                 category = query.get("category", [""])[0]
+                source = query.get("source", [""])[0]
                 search = query.get("q", [""])[0].strip()
                 clauses = ["booked_on >= ?", "booked_on < ?"]
                 params: list = [start, end]
                 if category:
                     clauses.append("category = ?")
                     params.append(category)
+                if source in {"sparkasse", "n26", "paypal"}:
+                    clauses.append("source = ?")
+                    params.append(source)
                 if search:
                     clauses.append("(payee LIKE ? OR description LIKE ? OR booking_type LIKE ?)")
                     params.extend([f"%{search}%"] * 3)
@@ -669,9 +804,7 @@ class Handler(BaseHTTPRequestHandler):
                     rows = conn.execute("SELECT * FROM rules ORDER BY priority DESC, id").fetchall()
                 self.send_json([dict(row) for row in rows])
             elif parsed.path == "/api/categories":
-                with connect() as conn:
-                    rows = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
-                self.send_json([dict(row) for row in rows])
+                self.send_json(category_usage())
             elif parsed.path == "/api/imports":
                 with connect() as conn:
                     rows = conn.execute("SELECT * FROM imports ORDER BY id DESC LIMIT 30").fetchall()
@@ -762,15 +895,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
-        match = re.fullmatch(r"/api/rules/(\d+)", parsed.path)
-        if not match:
-            self.send_error(404)
-            return
         try:
-            with connect() as conn:
-                conn.execute("DELETE FROM rules WHERE id=?", (int(match.group(1)),))
-                changed = recategorize(conn)
-            self.send_json({"ok": True, "recategorized": changed})
+            rule_match = re.fullmatch(r"/api/rules/(\d+)", parsed.path)
+            category_match = re.fullmatch(r"/api/categories/(.+)", parsed.path)
+            if rule_match:
+                with connect() as conn:
+                    conn.execute("DELETE FROM rules WHERE id=?", (int(rule_match.group(1)),))
+                    changed = recategorize(conn)
+                self.send_json({"ok": True, "recategorized": changed})
+                return
+            if category_match:
+                category = unquote(category_match.group(1))
+                disable_category(category)
+                self.send_json({"ok": True})
+                return
+            self.send_error(404)
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, 400)
         except Exception as exc:
             self.send_json({"error": str(exc)}, 500)
 

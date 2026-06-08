@@ -1,4 +1,4 @@
-const state={month:new Date().toISOString().slice(0,7),categories:[],transactions:[]};
+const state={month:new Date().toISOString().slice(0,7),source:"",categories:[],transactions:[]};
 const money=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
 const qs=s=>document.querySelector(s);
 const qsa=s=>[...document.querySelectorAll(s)];
@@ -7,9 +7,11 @@ async function api(path,options={}){const res=await fetch(path,options);const da
 function toast(message){const el=qs("#toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2600)}
 function escapeHtml(value=""){return value.replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]))}
 function formatDate(value){return new Intl.DateTimeFormat("de-DE").format(new Date(value+"T12:00:00"))}
+function sourceName(value){return {sparkasse:"Sparkasse",n26:"N26",paypal:"PayPal"}[value]||value}
 function categoryOptions(selected=""){
-  const regular=state.categories.filter(c=>!c.name.startsWith("Investieren · "));
-  const investments=state.categories.filter(c=>c.name.startsWith("Investieren · "));
+  const byName=(a,b)=>a.name.localeCompare(b.name,"de");
+  const regular=state.categories.filter(c=>!c.name.startsWith("Investieren · ")).sort(byName);
+  const investments=state.categories.filter(c=>c.name.startsWith("Investieren · ")).sort(byName);
   const options=regular.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===selected?"selected":""}>${escapeHtml(c.name)}</option>`).join("");
   const investmentOptions=investments.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===selected?"selected":""}>${escapeHtml(c.name.replace("Investieren · ",""))}</option>`).join("");
   return `${options}<optgroup label="Investieren">${investmentOptions}</optgroup>`;
@@ -18,12 +20,12 @@ function categoryOptions(selected=""){
 async function loadCategories(){
   state.categories=await api("/api/categories");
   const options=categoryOptions();
-  qs("#category-filter").insertAdjacentHTML("beforeend",options);
+  qs("#category-filter").innerHTML=`<option value="">Alle Kategorien</option>${options}`;
   qs('#rule-form select[name="category"]').innerHTML=options;
 }
 
 async function loadDashboard(){
-  const data=await api(`/api/dashboard?month=${state.month}`);
+  const data=await api(`/api/dashboard?month=${state.month}&source=${encodeURIComponent(state.source)}`);
   qs("#income").textContent=money.format(data.totals.income);
   qs("#expenses").textContent=money.format(data.totals.expenses);
   qs("#balance").textContent=money.format(data.balance);
@@ -44,7 +46,7 @@ async function loadDashboard(){
 async function loadTransactions(){
   const search=encodeURIComponent(qs("#search").value);
   const category=encodeURIComponent(qs("#category-filter").value);
-  state.transactions=await api(`/api/transactions?month=${state.month}&q=${search}&category=${category}`);
+  state.transactions=await api(`/api/transactions?month=${state.month}&q=${search}&category=${category}&source=${encodeURIComponent(state.source)}`);
   qs("#transaction-rows").innerHTML=state.transactions.map(t=>`
     <tr>
       <td>${formatDate(t.booked_on)}</td>
@@ -70,10 +72,32 @@ async function loadInvestments(){
     <tr><td>${formatDate(t.booked_on)}</td><td class="transaction-main"><strong>${escapeHtml(t.payee||t.booking_type||"Buchung")}</strong><span>${escapeHtml(t.description||"")}</span></td><td><span class="pill investment">${escapeHtml(t.category.replace("Investieren · ",""))}</span></td><td class="amount ${t.amount>0?"positive":""}">${money.format(t.amount)}</td></tr>`).join(""):'<tr><td colspan="4" class="hint">Noch keine Investment-Buchungen vorhanden.</td></tr>';
 }
 
+async function loadOutlays(){
+  const data=await api("/api/outlays");
+  qs("#outlays-paid").textContent=money.format(data.paid);
+  qs("#outlays-reimbursed").textContent=money.format(data.reimbursed);
+  qs("#outlays-open").textContent=money.format(data.open);
+  const status={settled:"Ausgeglichen",open:"Offen",unassigned:"Nicht zugeordnet"};
+  qs("#outlay-rows").innerHTML=data.transactions.length?data.transactions.map(t=>`
+    <tr><td>${formatDate(t.booked_on)}</td><td class="transaction-main"><strong>${escapeHtml(t.payee||t.booking_type||"Buchung")}</strong><span>${escapeHtml(t.description||"")}</span></td><td>${escapeHtml(sourceName(t.source))}</td><td><span class="pill ${t.amount>0?"reimbursed":"outlay"}">${t.amount>0?"Erstattung":"Ausgelegt"}</span></td><td>${status[t.outlay_status]}</td><td class="amount ${t.amount>0?"positive":""}">${money.format(t.amount)}</td></tr>`).join(""):'<tr><td colspan="6" class="hint">Noch keine Buchungen als Auslagen markiert.</td></tr>';
+}
+
 async function loadRules(){
   const rules=await api("/api/rules");
   qs("#rule-list").innerHTML=rules.map(r=>`
     <article class="rule-card"><div><strong>${escapeHtml(r.name)}</strong><small>${r.match_type==="regex"?"RegEx":"Keyword"} · Prioritaet ${r.priority}</small></div><code>${escapeHtml(r.pattern)}</code><span class="pill">${escapeHtml(r.category)}</span><span>${r.expense_type==="fixed"?"Fixkosten":r.expense_type==="income"?"Einnahme":"Variabel"}</span><button class="small-button delete" data-rule="${r.id}">Loeschen</button></article>`).join("");
+}
+
+async function loadCategoryUsage(){
+  const categories=await api("/api/categories");
+  qs("#category-usage").innerHTML=categories.map(c=>`
+    <div class="category-usage-row">
+      <i style="background:${c.color}"></i>
+      <strong>${escapeHtml(c.name)}</strong>
+      <span>${c.usage_count} Buchungen</span>
+      <span>${money.format(c.spent)} Ausgaben</span>
+      ${c.removable?`<button class="small-button delete" data-category="${escapeHtml(c.name)}">Entfernen</button>`:"<small>System</small>"}
+    </div>`).join("");
 }
 
 async function loadImports(){
@@ -117,12 +141,16 @@ async function upload(){
 async function init(){
   qs("#month").value=state.month;
   await loadCategories();
-  await Promise.all([loadDashboard(),loadTransactions(),loadInvestments(),loadRules(),loadImports()]);
+  await Promise.all([loadDashboard(),loadTransactions(),loadInvestments(),loadOutlays(),loadRules(),loadCategoryUsage(),loadImports()]);
   qsa(".nav").forEach(button=>button.addEventListener("click",()=>{
     qsa(".nav,.view").forEach(el=>el.classList.remove("active"));button.classList.add("active");qs(`#${button.dataset.view}`).classList.add("active");
-    qs("#page-title").textContent=button.textContent;qs("#month").parentElement.style.display=["dashboard","transactions"].includes(button.dataset.view)?"flex":"none";
+    qs("#page-title").textContent=button.textContent;
+    const filtered=["dashboard","transactions"].includes(button.dataset.view);
+    qs("#month").parentElement.style.display=filtered?"flex":"none";
+    qs("#source-filter").parentElement.style.display=filtered?"flex":"none";
   }));
   qs("#month").addEventListener("change",async e=>{state.month=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
+  qs("#source-filter").addEventListener("change",async e=>{state.source=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
   let timer;qs("#search").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(loadTransactions,250)});
   qs("#category-filter").addEventListener("change",loadTransactions);
   qs("#transaction-rows").addEventListener("click",e=>{const button=e.target.closest(".make-rule");if(button)openRule(state.transactions.find(t=>t.id===Number(button.dataset.id)))});
@@ -130,12 +158,21 @@ async function init(){
     const select=e.target.closest(".transaction-category");if(!select)return;
     await api(`/api/transactions/${select.dataset.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({category:select.value})});
     toast("Kategorie gespeichert");
-    await Promise.all([loadTransactions(),loadDashboard(),loadInvestments()]);
+    await Promise.all([loadTransactions(),loadDashboard(),loadInvestments(),loadOutlays(),loadCategoryUsage()]);
   });
   qs("#new-rule").addEventListener("click",()=>openRule({payee:"",description:"",amount:-1}));
   qs("#rule-form").addEventListener("submit",saveRule);
   qsa("[data-close-dialog]").forEach(button=>button.addEventListener("click",()=>qs("#rule-dialog").close()));
   qs("#rule-list").addEventListener("click",async e=>{const button=e.target.closest("[data-rule]");if(!button)return;if(!confirm("Diese Regel loeschen?"))return;await api(`/api/rules/${button.dataset.rule}`,{method:"DELETE"});toast("Regel geloescht");await Promise.all([loadRules(),loadTransactions(),loadDashboard()])});
+  qs("#category-usage").addEventListener("click",async e=>{
+    const button=e.target.closest("[data-category]");if(!button)return;
+    const name=button.dataset.category;
+    if(!confirm(`Kategorie „${name}“ entfernen? Zugeordnete Buchungen werden auf Sonstiges zurueckgesetzt.`))return;
+    await api(`/api/categories/${encodeURIComponent(name)}`,{method:"DELETE"});
+    toast("Kategorie entfernt");
+    await loadCategories();
+    await Promise.all([loadCategoryUsage(),loadTransactions(),loadDashboard(),loadInvestments(),loadOutlays(),loadRules()]);
+  });
   qs("#csv-file").addEventListener("change",e=>{qs("#upload").disabled=!e.target.files.length;if(e.target.files[0])qs("#dropzone strong").textContent=e.target.files[0].name});
   qs("#upload").addEventListener("click",upload);
   const drop=qs("#dropzone");["dragenter","dragover"].forEach(name=>drop.addEventListener(name,e=>{e.preventDefault();drop.classList.add("drag")}));["dragleave","drop"].forEach(name=>drop.addEventListener(name,e=>{e.preventDefault();drop.classList.remove("drag")}));drop.addEventListener("drop",e=>{qs("#csv-file").files=e.dataTransfer.files;qs("#csv-file").dispatchEvent(new Event("change"))});

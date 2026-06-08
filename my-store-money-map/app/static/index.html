@@ -17,6 +17,7 @@
       <button class="nav active" data-view="dashboard">Uebersicht</button>
       <button class="nav" data-view="transactions">Buchungen</button>
       <button class="nav" data-view="investments">Investments</button>
+      <button class="nav" data-view="outlays">Auslagen</button>
       <button class="nav" data-view="rules">Regeln</button>
       <button class="nav" data-view="import">CSV importieren</button>
     </nav>
@@ -26,7 +27,17 @@
   <main>
     <header>
       <div><p class="eyebrow">PERSONAL FINANCE</p><h1 id="page-title">Uebersicht</h1></div>
-      <label class="month-control">Monat <input id="month" type="month"></label>
+      <div class="header-controls">
+        <label class="source-control">Konto
+          <select id="source-filter">
+            <option value="">Alle Konten</option>
+            <option value="sparkasse">Sparkasse</option>
+            <option value="n26">N26</option>
+            <option value="paypal">PayPal</option>
+          </select>
+        </label>
+        <label class="month-control">Monat <input id="month" type="month"></label>
+      </div>
     </header>
 
     <section id="dashboard" class="view active">
@@ -91,9 +102,27 @@
       </article>
     </section>
 
+    <section id="outlays" class="view">
+      <div class="cards investment-cards">
+        <article class="metric"><span>Ausgelegt</span><strong id="outlays-paid">0 EUR</strong><small>Von dir bezahlte Auslagen</small></article>
+        <article class="metric"><span>Zurueckerhalten</span><strong id="outlays-reimbursed">0 EUR</strong><small>Erkannte Erstattungen</small></article>
+        <article class="metric accent"><span>Noch offen</span><strong id="outlays-open">0 EUR</strong><small>Ausgelegt minus Erstattungen</small></article>
+      </div>
+      <article class="panel">
+        <div class="panel-head"><div><p class="eyebrow">ABGLEICH</p><h2>Auslagen und Erstattungen</h2></div></div>
+        <p class="hint">Ordne sowohl deine Zahlung als auch die spaetere Erstattung der Kategorie „Auslagen“ zu. Die offene Summe wird automatisch berechnet.</p>
+        <div class="table-wrap"><table><thead><tr><th>Datum</th><th>Buchung</th><th>Konto</th><th>Typ</th><th>Status</th><th>Betrag</th></tr></thead><tbody id="outlay-rows"></tbody></table></div>
+      </article>
+    </section>
+
     <section id="rules" class="view">
       <div class="section-action"><p>Regeln werden nach Prioritaet angewendet. Neue Regeln kategorisieren bestehende Buchungen sofort neu.</p><button class="primary" id="new-rule">Neue Regel</button></div>
       <div id="rule-list" class="rule-list"></div>
+      <article class="panel category-admin">
+        <div class="panel-head"><div><p class="eyebrow">AUFRAEUMEN</p><h2>Kategorien nach Nutzung</h2></div></div>
+        <p class="hint">Selten verwendete Kategorien stehen oben. Beim Entfernen werden zugeordnete Buchungen wieder als „Sonstiges“ markiert.</p>
+        <div id="category-usage" class="category-usage"></div>
+      </article>
     </section>
 
     <section id="import" class="view">

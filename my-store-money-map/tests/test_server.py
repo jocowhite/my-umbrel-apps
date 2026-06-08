@@ -108,6 +108,68 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(investments["invested"], 100)
         self.assertEqual(investments["categories"][0]["label"], "MSCI World")
 
+    def test_dashboard_source_filter(self):
+        sparkasse = (
+            "Buchungstag;Verwendungszweck;Beguenstigter/Zahlungspflichtiger;Betrag;Waehrung\n"
+            "01.06.2026;Einkauf;REWE;-20,00;EUR\n"
+        ).encode()
+        n26 = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-02,CinemaxX,Card,Film,-15.00\n"
+        ).encode()
+        app.import_csv(sparkasse, "sparkasse", "sparkasse.csv")
+        app.import_csv(n26, "n26", "n26.csv")
+        self.assertEqual(app.dashboard("2026-06", "sparkasse")["totals"]["expenses"], 20)
+        self.assertEqual(app.dashboard("2026-06", "n26")["totals"]["expenses"], 15)
+
+    def test_outlays_are_balanced_and_excluded_from_dashboard(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-02,Restaurant,Card,Teamessen,-80.00\n"
+            "2026-06-04,Kollege,Bank Transfer,Erstattung,50.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        with app.connect() as conn:
+            conn.execute("UPDATE transactions SET category='Auslagen', is_manual=1")
+        result = app.outlays()
+        dashboard = app.dashboard("2026-06")
+        self.assertEqual(result["paid"], 80)
+        self.assertEqual(result["reimbursed"], 50)
+        self.assertEqual(result["open"], 30)
+        self.assertEqual(dashboard["totals"]["expenses"], 0)
+        self.assertEqual(dashboard["totals"]["income"], 0)
+
+    def test_equal_outlay_and_reimbursement_are_marked_settled(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-02,Hotel,Card,Auslage,-120.00\n"
+            "2026-06-04,Kollege,Bank Transfer,Erstattung,120.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        with app.connect() as conn:
+            conn.execute("UPDATE transactions SET category='Auslagen', is_manual=1")
+        statuses = {row["outlay_status"] for row in app.outlays()["transactions"]}
+        self.assertEqual(statuses, {"settled"})
+
+    def test_category_usage_and_disable(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-02,ATM,Cash Withdrawal,Bargeld,-40.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        with app.connect() as conn:
+            conn.execute("UPDATE transactions SET category='Bargeld', is_manual=1")
+        usage = {row["name"]: row for row in app.category_usage()}
+        self.assertEqual(usage["Bargeld"]["usage_count"], 1)
+        app.disable_category("Bargeld")
+        with app.connect() as conn:
+            transaction = conn.execute("SELECT category FROM transactions").fetchone()
+            enabled = conn.execute(
+                "SELECT enabled FROM categories WHERE name='Bargeld'"
+            ).fetchone()["enabled"]
+        self.assertEqual(transaction["category"], "Sonstiges")
+        self.assertEqual(enabled, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
