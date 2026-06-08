@@ -80,7 +80,7 @@
         <div class="sankey-filter-head">
           <div><p class="eyebrow">INTERAKTIVER GELDFLUSS</p><h2>Zeitraum und Inhalt</h2></div>
           <div class="sankey-actions">
-            <button class="secondary" id="sankey-collapse">Alles zuklappen</button>
+            <button class="secondary" id="sankey-collapse">Auswahl loesen</button>
             <button class="primary" id="sankey-apply">Diagramm aktualisieren</button>
           </div>
         </div>
@@ -119,34 +119,29 @@
         <div class="sankey-toolbar">
           <div>
             <p class="eyebrow">SANKEY-DIAGRAMM</p>
-            <h2>Vom Eingang bis zur einzelnen Buchung</h2>
-            <p class="hint">Klicke auf eine Kategorie oder Gegenpartei, um die naechste Detailstufe zu oeffnen. Ziehe zum Verschieben und nutze das Mausrad zum Zoomen.</p>
+            <h2>Von deinen Konten bis in jede Kategorie</h2>
+            <p class="hint">Sparkasse steht links, N26 und PayPal in der Mitte, Kategorien rechts. Klicke einen Balken oder Strom an, um seine Buchungen unten dauerhaft anzuzeigen.</p>
           </div>
           <label class="sankey-search">Im Diagramm suchen <input id="sankey-search" type="search" placeholder="Kategorie, Haendler, Buchung..."></label>
         </div>
         <div class="sankey-stage" id="sankey-stage">
           <svg id="sankey-svg" role="img" aria-label="Interaktives Sankey-Diagramm deiner Geldfluesse"></svg>
           <div class="sankey-empty hidden" id="sankey-empty">Fuer diese Filter gibt es keine sichtbaren Buchungen.</div>
-          <div class="sankey-zoom">
-            <button type="button" data-sankey-zoom="in" aria-label="Hineinzoomen">+</button>
-            <button type="button" data-sankey-zoom="out" aria-label="Herauszoomen">−</button>
-            <button type="button" data-sankey-zoom="reset">100%</button>
-          </div>
         </div>
       </article>
       <div class="grid sankey-lower">
         <article class="panel">
           <div class="panel-head"><div><p class="eyebrow">AUSWAHL</p><h2 id="sankey-detail-title">Diagramm erkunden</h2></div></div>
           <div id="sankey-detail" class="sankey-detail">
-            <p class="hint">Bewege die Maus ueber einen Knoten oder Geldstrom, um Betrag, Anteil und enthaltene Buchungen zu sehen.</p>
+            <p class="hint">Klicke einen Knoten oder Geldstrom an. Die Auswahl bleibt bestehen, bis du eine andere Stelle anklickst oder sie oben loest.</p>
           </div>
         </article>
         <article class="panel">
-          <div class="panel-head"><div><p class="eyebrow">LEGENDE</p><h2>Detailstufen</h2></div></div>
+          <div class="panel-head"><div><p class="eyebrow">LEGENDE</p><h2>Aufbau</h2></div></div>
           <ol class="sankey-legend">
-            <li><b>1</b><span>Kategorien zeigen die grobe Verteilung.</span></li>
-            <li><b>2</b><span>Aufgeklappte Kategorien zeigen Gegenparteien.</span></li>
-            <li><b>3</b><span>Aufgeklappte Gegenparteien zeigen jede Buchung.</span></li>
+            <li><b>1</b><span>Sparkasse und externe Geldeingaenge starten links.</span></li>
+            <li><b>2</b><span>Interne Transfers laufen zu N26 oder PayPal in der Mitte.</span></li>
+            <li><b>3</b><span>Ausgaben gehen vom jeweiligen Konto direkt in die Kategorien rechts.</span></li>
           </ol>
         </article>
       </div>

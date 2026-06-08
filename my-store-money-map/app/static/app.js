@@ -1,4 +1,4 @@
-const state={month:new Date().toISOString().slice(0,7),source:"",dashboardMode:"gross",categories:[],transactions:[],sankey:{data:null,expandedCategories:new Set(),expandedParties:new Set(),zoom:1,panX:0,panY:0,graph:null}};
+const state={month:new Date().toISOString().slice(0,7),source:"",dashboardMode:"gross",categories:[],transactions:[],sankey:{data:null,graph:null,selected:null}};
 const money=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
 const qs=s=>document.querySelector(s);
 const qsa=s=>[...document.querySelectorAll(s)];
@@ -132,11 +132,7 @@ async function loadImports(){
 }
 
 function sankeySelected(name){return qsa(`input[name="${name}"]:checked`).map(input=>input.value)}
-function sankeyNodeId(value){return encodeURIComponent(value).replace(/%/g,"_")}
 function shortLabel(value,max=24){return value.length>max?`${value.slice(0,max-1)}…`:value}
-function sankeyTransactionLabel(transaction){
-  return `${formatDate(transaction.booked_on)} · ${transaction.description||transaction.booking_type||transaction.counterparty}`;
-}
 
 function buildSankeyGraph(){
   const data=state.sankey.data;
@@ -146,18 +142,32 @@ function buildSankeyGraph(){
   const nodes=new Map();
   const links=new Map();
   const accountBalances=new Map();
-  const addNode=(definition,transaction)=>{
+  const addNode=(definition,transactions=[])=>{
     if(!nodes.has(definition.id))nodes.set(definition.id,{...definition,transactions:new Set()});
-    if(transaction)nodes.get(definition.id).transactions.add(transaction.id);
+    transactions.forEach(transaction=>nodes.get(definition.id).transactions.add(transaction.id));
     return nodes.get(definition.id);
   };
-  const addPath=(path,transaction,value)=>{
-    path.forEach(node=>addNode(node,transaction));
+  const addPath=(path,transactions,value)=>{
+    const items=(Array.isArray(transactions)?transactions:[transactions]).filter(Boolean);
+    path.forEach(node=>addNode(node,items));
     for(let index=0;index<path.length-1;index++){
       const source=path[index],target=path[index+1],key=`${source.id}>${target.id}`;
       if(!links.has(key))links.set(key,{id:key,source:source.id,target:target.id,value:0,color:source.color||target.color,transactions:new Set()});
-      const link=links.get(key);link.value+=value;if(transaction)link.transactions.add(transaction.id);
+      const link=links.get(key);link.value+=value;items.forEach(transaction=>link.transactions.add(transaction.id));
     }
+  };
+  const accountNode=(source,label)=>{
+    const primary=source==="sparkasse";
+    return {id:`account:${source}`,label:label||sourceName(source),group:primary?"primary-account":"secondary-account",type:"account",color:primary?"#3448c5":"#101828",source};
+  };
+  const inflowNode=(transaction)=>{
+    const primary=transaction.source==="sparkasse";
+    return {id:`inflow:${transaction.source}:${transaction.category}`,label:`Eingang · ${transaction.category}`,group:primary?"primary-inflow":"secondary-inflow",type:"inflow",color:transaction.color,direction:"income"};
+  };
+  const categoryNode=(transaction)=>({id:`category:${transaction.category}`,label:transaction.category,group:"category",type:"category",color:transaction.color,direction:"expense"});
+  const balanceFor=(source,label)=>{
+    if(!accountBalances.has(source))accountBalances.set(source,{account:accountNode(source,label),income:0,expenses:0,transferIn:0,transferOut:0});
+    return accountBalances.get(source);
   };
   const transferGroups=new Map();
   data.transactions.forEach(transaction=>{
@@ -171,53 +181,44 @@ function buildSankeyGraph(){
     const direction=transaction.amount>0?"income":"expense";
     if(direction==="income"&&!showIncome)return;
     if(direction==="expense"&&!showExpenses)return;
-    const categoryId=`${direction}-category:${transaction.category}`;
-    const partyId=`${direction}-party:${transaction.category}:${transaction.counterparty}`;
-    const account={id:`account:${transaction.source}`,label:transaction.account_label,layer:3,type:"account",color:"#101828"};
-    if(!accountBalances.has(transaction.source))accountBalances.set(transaction.source,{account,income:0,expenses:0});
-    if(transaction.amount>0)accountBalances.get(transaction.source).income+=value;
-    else accountBalances.get(transaction.source).expenses+=value;
-    const category={id:categoryId,label:transaction.category,layer:direction==="income"?2:4,type:"category",color:transaction.color,direction};
-    const party={id:partyId,label:transaction.counterparty,layer:direction==="income"?1:5,type:"party",color:transaction.color,direction,parent:categoryId};
-    const detail={id:`transaction:${transaction.id}`,label:sankeyTransactionLabel(transaction),layer:direction==="income"?0:6,type:"transaction",color:transaction.color,direction,parent:partyId};
+    const account=accountNode(transaction.source,transaction.account_label);
+    const balance=balanceFor(transaction.source,transaction.account_label);
     if(direction==="income"){
-      const path=[category,account];
-      if(state.sankey.expandedCategories.has(categoryId))path.unshift(party);
-      if(state.sankey.expandedParties.has(partyId))path.unshift(detail);
-      addPath(path,transaction,value);
+      balance.income+=value;
+      addPath([inflowNode(transaction),account],transaction,value);
     }else{
-      const path=[account,category];
-      if(state.sankey.expandedCategories.has(categoryId))path.push(party);
-      if(state.sankey.expandedParties.has(partyId))path.push(detail);
-      addPath(path,transaction,value);
+      balance.expenses+=value;
+      addPath([account,categoryNode(transaction)],transaction,value);
     }
   });
-  if(showIncome&&showExpenses){
-    accountBalances.forEach(balance=>{
-      const difference=balance.income-balance.expenses;
-      if(Math.abs(difference)<.005)return;
-      if(difference>0)addPath([
-        balance.account,
-        {id:`balance:${balance.account.id}:positive`,label:"Zeitraumueberschuss",layer:4,type:"balance",color:"#1f9d73"}
-      ],null,difference);
-      else addPath([
-        {id:`balance:${balance.account.id}:negative`,label:"Aus Startbestand / Ruecklagen",layer:2,type:"balance",color:"#f59e0b"},
-        balance.account
-      ],null,-difference);
-    });
-  }
   transferGroups.forEach((group,groupId)=>{
     const outgoing=group.find(item=>item.amount<0);
     const incoming=group.find(item=>item.amount>0);
     if(!outgoing&&!incoming)return;
     const value=Math.abs((outgoing||incoming).amount);
-    const from=outgoing?.account_label||"Anderes eigenes Konto";
-    const to=incoming?.account_label||"Anderes eigenes Konto";
-    addPath([
-      {id:`account:${outgoing?.source||"external"}`,label:from,layer:3,type:"account",color:"#101828"},
-      {id:`transfer:${groupId}`,label:`Transfer → ${to}`,layer:4,type:"transfer",color:"#94a3b8"}
-    ],outgoing||incoming,value);
+    const fallbackSource=`external-${groupId}`;
+    const fromSource=outgoing?.source||fallbackSource;
+    const toSource=incoming?.source||fallbackSource;
+    const from=accountNode(fromSource,outgoing?.account_label||"Anderes eigenes Konto");
+    const to=accountNode(toSource,incoming?.account_label||"Anderes eigenes Konto");
+    if(outgoing)balanceFor(outgoing.source,outgoing.account_label).transferOut+=value;
+    if(incoming)balanceFor(incoming.source,incoming.account_label).transferIn+=value;
+    addPath([from,to],group,value);
   });
+  if(showIncome&&showExpenses){
+    accountBalances.forEach(balance=>{
+      const difference=balance.income+balance.transferIn-balance.expenses-balance.transferOut;
+      if(Math.abs(difference)<.005)return;
+      if(difference>0)addPath([
+        balance.account,
+        {id:`balance:${balance.account.id}:positive`,label:"Zeitraumueberschuss",group:"category",type:"balance",color:"#1f9d73"}
+      ],[],difference);
+      else addPath([
+        {id:`balance:${balance.account.id}:negative`,label:"Aus Startbestand / Ruecklagen",group:balance.account.source==="sparkasse"?"primary-inflow":"secondary-inflow",type:"balance",color:"#f59e0b"},
+        balance.account
+      ],[],-difference);
+    });
+  }
   const transactionById=new Map(data.transactions.map(transaction=>[transaction.id,transaction]));
   return {
     nodes:[...nodes.values()].map(node=>({...node,transactions:[...node.transactions].map(id=>transactionById.get(id)).filter(Boolean)})),
@@ -226,8 +227,8 @@ function buildSankeyGraph(){
 }
 
 function layoutSankey(graph){
-  const layers=new Map();
-  graph.nodes.forEach(node=>{if(!layers.has(node.layer))layers.set(node.layer,[]);layers.get(node.layer).push(node)});
+  const groups=new Map();
+  graph.nodes.forEach(node=>{if(!groups.has(node.group))groups.set(node.group,[]);groups.get(node.group).push(node)});
   graph.links.forEach(link=>{
     link.sourceNode=graph.nodes.find(node=>node.id===link.source);
     link.targetNode=graph.nodes.find(node=>node.id===link.target);
@@ -235,22 +236,23 @@ function layoutSankey(graph){
     link.targetNode.incoming=(link.targetNode.incoming||0)+link.value;
   });
   graph.nodes.forEach(node=>node.value=Math.max(node.incoming||0,node.outgoing||0));
-  layers.forEach(nodes=>nodes.sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label,"de")));
-  const maxNodes=Math.max(...[...layers.values()].map(nodes=>nodes.length),1);
+  groups.forEach(nodes=>nodes.sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label,"de")));
+  const maxNodes=Math.max(...[...groups.values()].map(nodes=>nodes.length),1);
   const height=Math.max(640,maxNodes*24+105);
-  const width=Math.max(1150,Math.max(...layers.keys())*250+260),nodeWidth=16,gap=10,top=55;
+  const width=1200,nodeWidth=16,gap=10,top=55;
+  const positions={"primary-inflow":25,"primary-account":245,"secondary-inflow":440,"secondary-account":650,"category":1170};
   let scale=Infinity;
-  layers.forEach(nodes=>{
+  groups.forEach(nodes=>{
     const total=nodes.reduce((sum,node)=>sum+node.value,0);
     const available=height-top-30-gap*Math.max(0,nodes.length-1)-8*nodes.length;
     if(total)scale=Math.min(scale,Math.max(.02,available/total));
   });
   if(!Number.isFinite(scale))scale=1;
-  layers.forEach((nodes,layer)=>{
+  groups.forEach((nodes,group)=>{
     const columnHeight=nodes.reduce((sum,node)=>sum+8+node.value*scale,0)+gap*Math.max(0,nodes.length-1);
     let y=Math.max(top,top+(height-top-30-columnHeight)/2);
     nodes.forEach(node=>{
-      node.x=45+layer*250;
+      node.x=positions[group];
       node.y=y;
       node.height=8+node.value*scale;
       node.width=nodeWidth;
@@ -267,7 +269,7 @@ function layoutSankey(graph){
     link.sourceNode.sourceOffset+=link.width;
     link.targetNode.targetOffset+=link.width;
   });
-  return {width,height,layers};
+  return {width,height,groups};
 }
 
 function sankeyDetail(item){
@@ -283,12 +285,6 @@ function sankeyDetail(item){
     </div>
     ${sorted.slice(0,100).map(transaction=>`<div class="sankey-detail-row"><span>${formatDate(transaction.booked_on)}</span><strong>${escapeHtml(transaction.counterparty)}<small>${escapeHtml(transaction.description||transaction.booking_type||"")}</small></strong><strong>${money.format(transaction.amount)}</strong></div>`).join("")}
     ${sorted.length>100?`<p class="hint">Weitere ${sorted.length-100} Buchungen sind in dieser Summe enthalten.</p>`:""}`;
-}
-
-function applySankeyTransform(){
-  const viewport=qs("#sankey-viewport");if(!viewport)return;
-  viewport.setAttribute("transform",`translate(${state.sankey.panX} ${state.sankey.panY}) scale(${state.sankey.zoom})`);
-  qsa("[data-sankey-zoom='reset']").forEach(button=>button.textContent=`${Math.round(state.sankey.zoom*100)}%`);
 }
 
 function renderSankey(){
@@ -307,49 +303,47 @@ function renderSankey(){
   }
   empty.classList.add("hidden");
   const layout=layoutSankey(graph);
-  const layerNames={0:"EINZELBUCHUNGEN",1:"EINNAHMEQUELLEN",2:"EINNAHMEKATEGORIEN",3:"KONTEN",4:"AUSGABEKATEGORIEN",5:"EMPFAENGER",6:"EINZELBUCHUNGEN"};
   svg.setAttribute("viewBox",`0 0 ${layout.width} ${layout.height}`);
+  svg.setAttribute("preserveAspectRatio","xMidYMid meet");
   const links=graph.links.map(link=>{
-    const bend=(link.targetNode.x-link.sourceNode.x)*.48;
-    const path=`M ${link.sourceNode.x+link.sourceNode.width} ${link.sy} C ${link.sourceNode.x+link.sourceNode.width+bend} ${link.sy}, ${link.targetNode.x-bend} ${link.ty}, ${link.targetNode.x} ${link.ty}`;
-    return `<path class="sankey-link" data-link="${escapeHtml(link.id)}" d="${path}" stroke="${link.color}" stroke-width="${link.width}"/>`;
+    const start=link.sourceNode.x+link.sourceNode.width,end=link.targetNode.x;
+    const distance=end-start;
+    const bend=Math.max(60,Math.abs(distance)*.48)*(distance>=0?1:-1);
+    const path=`M ${start} ${link.sy} C ${start+bend} ${link.sy}, ${end-bend} ${link.ty}, ${end} ${link.ty}`;
+    const selected=state.sankey.selected?.type==="link"&&state.sankey.selected.key===link.id;
+    return `<path class="sankey-link ${selected?"selected":""}" data-link="${escapeHtml(link.id)}" d="${path}" stroke="${link.color}" stroke-width="${link.width}"/>`;
   }).join("");
-  const titles=[...layout.layers.keys()].sort((a,b)=>a-b).map(layer=>`<text class="sankey-column-title" x="${45+layer*250}" y="25">${layerNames[layer]}</text>`).join("");
+  const titles=`<text class="sankey-column-title" x="25" y="25">EINGAENGE &amp; SPARKASSE</text><text class="sankey-column-title" x="570" y="25">N26 &amp; PAYPAL</text><text class="sankey-column-title" x="1170" y="25" text-anchor="end">KATEGORIEN &amp; SALDO</text>`;
   const nodes=graph.nodes.map(node=>{
-    const expandable=node.type==="category"||node.type==="party";
-    const expanded=state.sankey.expandedCategories.has(node.id)||state.sankey.expandedParties.has(node.id);
-    const labelX=node.layer<=2?node.x-8:node.x+node.width+8;
-    const anchor=node.layer<=2?"end":"start";
-    return `<g class="sankey-node ${expandable?"expandable":""}" data-node="${escapeHtml(node.id)}">
+    const rightSide=node.group==="category";
+    const labelX=rightSide?node.x-8:node.x+node.width+8;
+    const anchor=rightSide?"end":"start";
+    const selected=state.sankey.selected?.type==="node"&&state.sankey.selected.key===node.id;
+    return `<g class="sankey-node ${selected?"selected":""}" data-node="${escapeHtml(node.id)}">
       <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="4" fill="${node.color}"/>
-      ${expandable&&node.height>=15?`<text class="expand-marker" x="${node.x+node.width/2}" y="${node.y+Math.min(node.height/2+4,15)}" text-anchor="middle">${expanded?"−":"+"}</text>`:""}
       <text x="${labelX}" y="${node.y+Math.min(13,node.height/2)}" text-anchor="${anchor}">${escapeHtml(shortLabel(node.label))}</text>
       <text class="node-value" x="${labelX}" y="${node.y+Math.min(27,node.height/2+14)}" text-anchor="${anchor}">${escapeHtml(money.format(node.value))}</text>
     </g>`;
   }).join("");
-  svg.innerHTML=`<g id="sankey-viewport">${titles}${links}${nodes}</g>`;
-  applySankeyTransform();
+  svg.innerHTML=`${titles}${links}${nodes}`;
   qsa(".sankey-node").forEach(element=>{
     const node=graph.nodes.find(item=>item.id===element.dataset.node);
-    element.addEventListener("mouseenter",()=>sankeyDetail(node));
     element.addEventListener("click",event=>{
       event.stopPropagation();
-      if(node.type==="category"){
-        state.sankey.expandedCategories.has(node.id)?state.sankey.expandedCategories.delete(node.id):state.sankey.expandedCategories.add(node.id);
-        renderSankey();
-      }else if(node.type==="party"){
-        state.sankey.expandedParties.has(node.id)?state.sankey.expandedParties.delete(node.id):state.sankey.expandedParties.add(node.id);
-        renderSankey();
-      }else sankeyDetail(node);
+      state.sankey.selected={type:"node",key:node.id};
+      sankeyDetail(node);renderSankey();
     });
   });
   qsa(".sankey-link").forEach(element=>{
     const link=graph.links.find(item=>item.id===element.dataset.link);
-    element.addEventListener("mouseenter",()=>sankeyDetail({...link,label:`${link.sourceNode.label} → ${link.targetNode.label}`}));
+    element.addEventListener("click",event=>{
+      event.stopPropagation();
+      state.sankey.selected={type:"link",key:link.id};
+      sankeyDetail({...link,label:`${link.sourceNode.label} → ${link.targetNode.label}`});renderSankey();
+    });
   });
   applySankeySearch();
-  const detailCount=state.sankey.expandedCategories.size+state.sankey.expandedParties.size;
-  qs("#sankey-depth").textContent=detailCount?`${detailCount} Bereiche aufgeklappt`:"Kategorien sichtbar";
+  qs("#sankey-depth").textContent=state.sankey.selected?"Auswahl fixiert":"Konten und Kategorien";
 }
 
 function applySankeySearch(){
@@ -385,6 +379,7 @@ async function loadSankey(){
   qs("#sankey-balance").textContent=money.format(summary.balance);
   qs("#sankey-count").textContent=summary.count;
   if(summary.truncated)toast("Das Diagramm zeigt die ersten 5.000 Buchungen dieses Filters");
+  state.sankey.selected=null;
   renderSankey();
 }
 
@@ -466,7 +461,10 @@ async function init(){
   qs("#category-filter").addEventListener("change",loadTransactions);
   qs("#sankey-apply").addEventListener("click",()=>loadSankey().catch(error=>toast(error.message)));
   qs("#sankey-collapse").addEventListener("click",()=>{
-    state.sankey.expandedCategories.clear();state.sankey.expandedParties.clear();renderSankey();
+    state.sankey.selected=null;
+    qs("#sankey-detail-title").textContent="Diagramm erkunden";
+    qs("#sankey-detail").innerHTML='<p class="hint">Klicke einen Knoten oder Geldstrom an. Die Auswahl bleibt bestehen, bis du eine andere Stelle anklickst.</p>';
+    renderSankey();
   });
   const updateCategoryCount=()=>{
     const selected=sankeySelected("sankey-category").length;
@@ -479,29 +477,6 @@ async function init(){
   qs("#sankey-expense-toggle").addEventListener("change",renderSankey);
   qs("#sankey-transfer-toggle").addEventListener("change",()=>loadSankey().catch(error=>toast(error.message)));
   qs("#sankey-search").addEventListener("input",applySankeySearch);
-  qsa("[data-sankey-zoom]").forEach(button=>button.addEventListener("click",()=>{
-    if(button.dataset.sankeyZoom==="in")state.sankey.zoom=Math.min(2.5,state.sankey.zoom*1.2);
-    else if(button.dataset.sankeyZoom==="out")state.sankey.zoom=Math.max(.45,state.sankey.zoom/1.2);
-    else{state.sankey.zoom=1;state.sankey.panX=0;state.sankey.panY=0}
-    applySankeyTransform();
-  }));
-  const sankeySvg=qs("#sankey-svg");
-  sankeySvg.addEventListener("wheel",event=>{
-    event.preventDefault();
-    state.sankey.zoom=Math.max(.45,Math.min(2.5,state.sankey.zoom*(event.deltaY<0?1.1:.9)));
-    applySankeyTransform();
-  },{passive:false});
-  let dragging=false,lastPoint=null;
-  sankeySvg.addEventListener("pointerdown",event=>{dragging=true;lastPoint={x:event.clientX,y:event.clientY};sankeySvg.setPointerCapture(event.pointerId);sankeySvg.classList.add("dragging")});
-  sankeySvg.addEventListener("pointermove",event=>{
-    if(!dragging)return;
-    const scale=sankeySvg.viewBox.baseVal.width/sankeySvg.clientWidth;
-    state.sankey.panX+=(event.clientX-lastPoint.x)*scale;
-    state.sankey.panY+=(event.clientY-lastPoint.y)*scale;
-    lastPoint={x:event.clientX,y:event.clientY};applySankeyTransform();
-  });
-  const stopDragging=()=>{dragging=false;lastPoint=null;sankeySvg.classList.remove("dragging")};
-  sankeySvg.addEventListener("pointerup",stopDragging);sankeySvg.addEventListener("pointercancel",stopDragging);
   qs("#transaction-rows").addEventListener("click",e=>{const button=e.target.closest(".make-rule");if(button)openRule(state.transactions.find(t=>t.id===Number(button.dataset.id))).catch(error=>toast(error.message))});
   qs("#transaction-rows").addEventListener("change",async e=>{
     const select=e.target.closest(".transaction-category");if(!select)return;

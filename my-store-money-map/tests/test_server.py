@@ -231,6 +231,27 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(visible["summary"]["count"], 2)
         self.assertEqual(visible["summary"]["transfers"], 100)
 
+    def test_sankey_transfer_keeps_source_account_direction(self):
+        sparkasse = (
+            "Buchungstag;Verwendungszweck;Beguenstigter/Zahlungspflichtiger;Betrag;Waehrung\n"
+            "01.06.2026;Umbuchung;Test User;-250,00;EUR\n"
+        ).encode()
+        n26 = (
+            "Booking Date,Partner Name,Type,Payment Reference,Account Name,Amount (EUR)\n"
+            "2026-06-02,Test User,Transfer,Umbuchung,Hauptkonto,250.00\n"
+        ).encode()
+        app.import_csv(sparkasse, "sparkasse", "sparkasse.csv")
+        app.import_csv(n26, "n26", "n26.csv")
+        rows = app.sankey_data(
+            "2026-06-01", "2026-06-30", include_transfers=True
+        )["transactions"]
+        outgoing = next(row for row in rows if row["amount"] < 0)
+        incoming = next(row for row in rows if row["amount"] > 0)
+        self.assertEqual(outgoing["source"], "sparkasse")
+        self.assertEqual(incoming["source"], "n26")
+        self.assertEqual(incoming["account"], "Hauptkonto")
+        self.assertEqual(outgoing["transfer_group"], incoming["transfer_group"])
+
     def test_outlays_are_balanced_and_excluded_from_dashboard(self):
         raw = (
             "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
