@@ -1,0 +1,12 @@
+{
+  "name": "MoneyMap",
+  "short_name": "MoneyMap",
+  "description": "Privater Finanzmanager fuer Sparkasse, N26 und PayPal",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#101828",
+  "icons": [
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}

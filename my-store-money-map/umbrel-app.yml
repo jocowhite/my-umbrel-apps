@@ -1,0 +1,35 @@
+manifestVersion: 1.1
+id: my-store-money-map
+name: MoneyMap
+tagline: Private Finanzen aus Sparkasse, N26 und PayPal
+icon: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-money-map/app/static/icon.svg
+category: finance
+version: "0.1.0"
+port: 8743
+description: >-
+  MoneyMap ist ein privater Personal Finance Manager fuer dein Umbrel.
+  Importiere CSV-Dateien von Sparkasse, N26 und PayPal, ohne deine Finanzdaten
+  an einen Cloud-Dienst oder ein Sprachmodell zu senden.
+
+
+  Regelbasierte Kategorien mit Keywords und RegEx lassen sich direkt aus
+  Buchungstexten erstellen. MoneyMap unterscheidet Fixkosten, variable Kosten
+  und Einnahmen, erkennt doppelte Importe und gleicht interne Transfers zwischen
+  deinen eigenen Konten automatisch ab.
+
+
+  Dashboards zeigen Monatssaldo, Kostenstruktur, Kategorien und den Verlauf
+  deiner Einnahmen und Ausgaben. Alle Daten liegen lokal in einer SQLite-Datei
+  im verwalteten Umbrel App-Datenverzeichnis.
+developer: jocowhite
+website: https://github.com/jocowhite/my-umbrel-apps
+submitter: jocowhite
+submission: https://github.com/jocowhite/my-umbrel-apps
+repo: https://github.com/jocowhite/my-umbrel-apps
+support: https://github.com/jocowhite/my-umbrel-apps/issues
+gallery: []
+releaseNotes: "Erste Version mit CSV-Import, Regeln, Transfer-Abgleich und Monatsdashboard."
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""

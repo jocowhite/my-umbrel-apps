@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101828">
+  <meta name="description" content="Privater, regelbasierter Finanzmanager fuer Umbrel">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <title>MoneyMap</title>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">M</span><div><strong>MoneyMap</strong><small>Deine Finanzen. Lokal.</small></div></div>
+    <nav>
+      <button class="nav active" data-view="dashboard">Uebersicht</button>
+      <button class="nav" data-view="transactions">Buchungen</button>
+      <button class="nav" data-view="rules">Regeln</button>
+      <button class="nav" data-view="import">CSV importieren</button>
+    </nav>
+    <div class="privacy">Alle Daten bleiben auf deinem Umbrel.</div>
+  </aside>
+
+  <main>
+    <header>
+      <div><p class="eyebrow">PERSONAL FINANCE</p><h1 id="page-title">Uebersicht</h1></div>
+      <label class="month-control">Monat <input id="month" type="month"></label>
+    </header>
+
+    <section id="dashboard" class="view active">
+      <div class="cards">
+        <article class="metric"><span>Einnahmen</span><strong id="income">0 EUR</strong><small>ohne interne Transfers</small></article>
+        <article class="metric"><span>Ausgaben</span><strong id="expenses">0 EUR</strong><small>ohne interne Transfers</small></article>
+        <article class="metric accent"><span>Monatssaldo</span><strong id="balance">0 EUR</strong><small>Einnahmen minus Ausgaben</small></article>
+        <article class="metric"><span>Noch offen</span><strong id="uncategorized">0</strong><small>unkategorisierte Buchungen</small></article>
+      </div>
+      <div class="grid two">
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">KOSTENSTRUKTUR</p><h2>Fix oder flexibel?</h2></div></div>
+          <div class="split-chart">
+            <div class="donut" id="cost-donut"><div><strong id="fixed-share">0%</strong><span>Fixkosten</span></div></div>
+            <div class="legend">
+              <div><i class="fixed"></i><span>Fixkosten</span><strong id="fixed">0 EUR</strong></div>
+              <div><i class="variable"></i><span>Variable Kosten</span><strong id="variable">0 EUR</strong></div>
+            </div>
+          </div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">VERLAUF</p><h2>Einnahmen und Ausgaben</h2></div></div>
+          <div id="timeline" class="timeline"></div>
+        </article>
+      </div>
+      <article class="panel">
+        <div class="panel-head"><div><p class="eyebrow">KATEGORIEN</p><h2>Wofuer gibst du am meisten aus?</h2></div></div>
+        <div id="category-bars" class="category-bars"></div>
+      </article>
+    </section>
+
+    <section id="transactions" class="view">
+      <article class="panel">
+        <div class="toolbar">
+          <input id="search" type="search" placeholder="Buchungen durchsuchen...">
+          <select id="category-filter"><option value="">Alle Kategorien</option></select>
+        </div>
+        <p class="hint">Tipp: Markiere Text in einer Buchung und klicke auf „Regel“, um daraus direkt eine Zuordnung zu erstellen.</p>
+        <div class="table-wrap"><table><thead><tr><th>Datum</th><th>Buchung</th><th>Kategorie</th><th>Art</th><th>Betrag</th><th></th></tr></thead><tbody id="transaction-rows"></tbody></table></div>
+      </article>
+    </section>
+
+    <section id="rules" class="view">
+      <div class="section-action"><p>Regeln werden nach Prioritaet angewendet. Neue Regeln kategorisieren bestehende Buchungen sofort neu.</p><button class="primary" id="new-rule">Neue Regel</button></div>
+      <div id="rule-list" class="rule-list"></div>
+    </section>
+
+    <section id="import" class="view">
+      <div class="grid two">
+        <article class="panel upload-panel">
+          <p class="eyebrow">DATENQUELLE</p><h2>CSV-Datei importieren</h2>
+          <label>Quelle<select id="source"><option value="auto">Automatisch erkennen</option><option value="sparkasse">Sparkasse</option><option value="n26">N26</option><option value="paypal">PayPal</option></select></label>
+          <label class="dropzone" id="dropzone"><input id="csv-file" type="file" accept=".csv,text/csv"><strong>CSV hier ablegen</strong><span>oder Datei auswaehlen, maximal 25 MB</span></label>
+          <button class="primary wide" id="upload" disabled>Import starten</button>
+          <div id="import-result" class="result hidden"></div>
+        </article>
+        <article class="panel">
+          <p class="eyebrow">AUTOMATISCH</p><h2>Was MoneyMap beim Import macht</h2>
+          <ol class="steps">
+            <li><b>1</b><div><strong>Format erkennen</strong><span>Sparkasse, N26 und PayPal werden automatisch zugeordnet.</span></div></li>
+            <li><b>2</b><div><strong>Doppelte vermeiden</strong><span>Bereits importierte Buchungen werden uebersprungen.</span></div></li>
+            <li><b>3</b><div><strong>Eigene Transfers abgleichen</strong><span>Gegenbuchungen zwischen Konten zaehlen weder als Einnahme noch Ausgabe.</span></div></li>
+            <li><b>4</b><div><strong>Regeln anwenden</strong><span>Keywords und RegEx ordnen Kategorien und Kostentypen zu.</span></div></li>
+          </ol>
+          <button class="secondary wide" id="reconcile">Transfers erneut abgleichen</button>
+        </article>
+      </div>
+      <article class="panel">
+        <div class="panel-head"><div><p class="eyebrow">VERLAUF</p><h2>Letzte Importe</h2></div></div>
+        <div id="import-history" class="import-history"></div>
+      </article>
+    </section>
+  </main>
+
+  <dialog id="rule-dialog">
+    <form method="dialog" id="rule-form">
+      <div class="dialog-head"><div><p class="eyebrow">AUTOMATISCHE ZUORDNUNG</p><h2>Regel erstellen</h2></div><button type="button" data-close-dialog class="icon-button">x</button></div>
+      <label>Name<input name="name" required placeholder="z. B. Lieblingskino"></label>
+      <label>Suchmuster<input name="pattern" required placeholder="z. B. Cinemax"></label>
+      <div class="form-grid">
+        <label>Logik<select name="match_type"><option value="keyword">Keyword</option><option value="regex">RegEx</option></select></label>
+        <label>Prioritaet<input name="priority" type="number" min="0" max="999" value="50"></label>
+        <label>Kategorie<select name="category" required></select></label>
+        <label>Kostentyp<select name="expense_type"><option value="variable">Variabel</option><option value="fixed">Fixkosten</option><option value="income">Einnahme</option></select></label>
+      </div>
+      <div class="dialog-actions"><button type="button" data-close-dialog class="secondary">Abbrechen</button><button type="submit" class="primary">Regel speichern</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
