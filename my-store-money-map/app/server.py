@@ -11,17 +11,22 @@ import re
 import sqlite3
 import unicodedata
 import uuid
-from datetime import date, datetime, timedelta
+from bisect import bisect_left
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urlparse
+from urllib.request import Request, urlopen
 
 
 PORT = int(os.getenv("PORT", "8080"))
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 DB_PATH = DATA_DIR / "money-map.sqlite3"
+PRICE_CACHE_PATH = DATA_DIR / "investment-prices.json"
 STATIC_DIR = Path(__file__).parent / "static"
+MARKET_CACHE_SECONDS = 15 * 60
 
 CATEGORIES = [
     ("Wohnen", "#7768ff"),
@@ -831,7 +836,155 @@ def sankey_data(
     }
 
 
-def investments() -> dict:
+def fetch_json(url: str) -> dict:
+    request = Request(url, headers={"User-Agent": "MoneyMap/0.5.5"})
+    with urlopen(request, timeout=12) as response:
+        return json.loads(response.read())
+
+
+def load_price_cache() -> dict:
+    try:
+        return json.loads(PRICE_CACHE_PATH.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {"updated_at": None, "assets": {}}
+
+
+def save_price_cache(cache: dict) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = PRICE_CACHE_PATH.with_suffix(".tmp")
+    temporary.write_text(json.dumps(cache, ensure_ascii=True))
+    temporary.replace(PRICE_CACHE_PATH)
+
+
+def yahoo_prices(symbol: str) -> dict:
+    payload = fetch_json(
+        f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}"
+        "?range=5y&interval=1d&events=history"
+    )
+    result = payload.get("chart", {}).get("result", [None])[0]
+    if not result:
+        raise ValueError("Keine ETF-Kursdaten erhalten.")
+    timestamps = result.get("timestamp", [])
+    indicators = result.get("indicators", {})
+    values = (indicators.get("adjclose") or [{}])[0].get("adjclose")
+    if not values:
+        values = (indicators.get("quote") or [{}])[0].get("close", [])
+    prices = {
+        datetime.fromtimestamp(timestamp, UTC).date().isoformat(): float(value)
+        for timestamp, value in zip(timestamps, values)
+        if value is not None
+    }
+    meta = result.get("meta", {})
+    current = meta.get("regularMarketPrice") or (list(prices.values())[-1] if prices else None)
+    if not current or not prices:
+        raise ValueError("Unvollstaendige ETF-Kursdaten erhalten.")
+    as_of = datetime.fromtimestamp(
+        meta.get("regularMarketTime") or timestamps[-1], UTC
+    ).date().isoformat()
+    return {
+        "symbol": symbol,
+        "provider": "Yahoo Finance",
+        "currency": meta.get("currency", "EUR"),
+        "current": float(current),
+        "as_of": as_of,
+        "prices": prices,
+    }
+
+
+def bitcoin_prices() -> dict:
+    payload = fetch_json(
+        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+        "?vs_currency=eur&days=365&interval=daily"
+    )
+    values = payload.get("prices", [])
+    prices = {
+        datetime.fromtimestamp(timestamp / 1000, UTC).date().isoformat(): float(value)
+        for timestamp, value in values
+    }
+    if not prices:
+        raise ValueError("Keine Bitcoin-Kursdaten erhalten.")
+    return {
+        "symbol": "BTC",
+        "provider": "CoinGecko",
+        "currency": "EUR",
+        "current": float(values[-1][1]),
+        "as_of": datetime.fromtimestamp(values[-1][0] / 1000, UTC).date().isoformat(),
+        "prices": prices,
+    }
+
+
+def market_prices() -> tuple[dict, list[str]]:
+    cache = load_price_cache()
+    updated_at = cache.get("updated_at")
+    try:
+        fresh = updated_at and (
+            datetime.now() - datetime.fromisoformat(updated_at)
+        ).total_seconds() < MARKET_CACHE_SECONDS
+    except ValueError:
+        fresh = False
+    if fresh:
+        return cache.get("assets", {}), []
+
+    assets = cache.get("assets", {})
+    errors = []
+    providers = {
+        "Investieren · MSCI World": lambda: yahoo_prices("EUNL.DE"),
+        "Investieren · Bitcoin": bitcoin_prices,
+    }
+    for category, loader in providers.items():
+        try:
+            current = loader()
+            previous_prices = assets.get(category, {}).get("prices", {})
+            current["prices"] = {**previous_prices, **current["prices"]}
+            assets[category] = current
+        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"{category.replace('Investieren · ', '')}: {exc}")
+    if assets:
+        cache = {"updated_at": datetime.now().isoformat(timespec="seconds"), "assets": assets}
+        try:
+            save_price_cache(cache)
+        except OSError:
+            pass
+    return assets, errors
+
+
+def calculate_market_position(transaction_rows: list, asset: dict) -> dict | None:
+    prices = asset.get("prices", {})
+    if not prices or not asset.get("current"):
+        return None
+    days = sorted(prices)
+    units = 0.0
+    priced_transactions = 0
+    for row in sorted(transaction_rows, key=lambda item: (item["booked_on"], item["id"])):
+        index = bisect_left(days, row["booked_on"])
+        if (
+            index == 0
+            and row["booked_on"] < days[0]
+            and date.fromisoformat(days[0]) - date.fromisoformat(row["booked_on"])
+            > timedelta(days=7)
+        ):
+            return None
+        if index >= len(days):
+            index = len(days) - 1
+        price = float(prices[days[index]])
+        if not price:
+            continue
+        units += (-row["amount_cents"] / 100) / price
+        priced_transactions += 1
+    value = units * float(asset["current"])
+    return {
+        "symbol": asset["symbol"],
+        "provider": asset["provider"],
+        "currency": asset.get("currency", "EUR"),
+        "price": float(asset["current"]),
+        "as_of": asset["as_of"],
+        "units": units,
+        "value": value,
+        "priced_transactions": priced_transactions,
+    }
+
+
+def investments(include_market: bool = False) -> dict:
     investment_filter = is_investment_sql("t")
     with connect() as conn:
         categories = conn.execute(
@@ -858,12 +1011,12 @@ def investments() -> dict:
             f"""
             SELECT t.* FROM transactions t
             WHERE {investment_filter} AND t.is_transfer=0
-            ORDER BY t.booked_on DESC, t.id DESC LIMIT 100
+            ORDER BY t.booked_on DESC, t.id DESC
             """
         ).fetchall()
     invested_cents = sum(row["invested_cents"] for row in categories)
     returned_cents = sum(row["returned_cents"] for row in categories)
-    return {
+    result = {
         "invested": invested_cents / 100,
         "returned": returned_cents / 100,
         "net": (invested_cents - returned_cents) / 100,
@@ -880,8 +1033,55 @@ def investments() -> dict:
             {"month": row["month"], "invested": row["invested_cents"] / 100}
             for row in months
         ],
-        "transactions": [row_dict(row) for row in transactions],
+        "transactions": [row_dict(row) for row in transactions[:100]],
     }
+    if not include_market:
+        return result
+
+    assets, market_errors = market_prices()
+    by_category: dict[str, list] = {}
+    for row in transactions:
+        by_category.setdefault(row["category"], []).append(row)
+    positions = []
+    for category, asset in assets.items():
+        category_transactions = by_category.get(category, [])
+        if not category_transactions:
+            continue
+        position = calculate_market_position(category_transactions, asset)
+        if not position:
+            continue
+        category_summary = next(
+            (row for row in result["categories"] if row["category"] == category), None
+        )
+        net = (
+            category_summary["invested"] - category_summary["returned"]
+            if category_summary
+            else 0
+        )
+        position.update(
+            {
+                "category": category,
+                "label": category.replace("Investieren · ", ""),
+                "net": net,
+                "gain": position["value"] - net,
+                "gain_percent": ((position["value"] / net - 1) * 100) if net else 0,
+            }
+        )
+        positions.append(position)
+    market_value = sum(position["value"] for position in positions)
+    priced_net = sum(position["net"] for position in positions)
+    result["market"] = {
+        "available": bool(positions),
+        "value": market_value,
+        "gain": market_value - priced_net,
+        "gain_percent": ((market_value / priced_net - 1) * 100) if priced_net else 0,
+        "priced_net": priced_net,
+        "unpriced_net": result["net"] - priced_net,
+        "positions": positions,
+        "errors": market_errors,
+        "estimated": True,
+    }
+    return result
 
 
 def outlays() -> dict:
@@ -979,7 +1179,7 @@ def disable_category(category: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.5.4"
+    server_version = "MoneyMap/0.5.5"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -1050,7 +1250,7 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 )
             elif parsed.path == "/api/investments":
-                self.send_json(investments())
+                self.send_json(investments(include_market=True))
             elif parsed.path == "/api/outlays":
                 self.send_json(outlays())
             elif parsed.path == "/api/transactions":

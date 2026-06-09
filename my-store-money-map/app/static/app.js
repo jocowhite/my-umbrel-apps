@@ -1,5 +1,6 @@
 const state={month:new Date().toISOString().slice(0,7),year:String(new Date().getFullYear()),periodMode:"month",source:"",dashboardMode:"gross",categories:[],transactions:[],sankey:{data:null,graph:null,selected:null}};
 const money=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
+const percentNumber=new Intl.NumberFormat("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1});
 const qs=s=>document.querySelector(s);
 const qsa=s=>[...document.querySelectorAll(s)];
 
@@ -101,12 +102,22 @@ async function loadTransactions(){
 
 async function loadInvestments(){
   const data=await api("/api/investments");
-  qs("#invested-total").textContent=money.format(data.invested);
   qs("#investment-returns").textContent=money.format(data.returned);
   qs("#investment-net").textContent=money.format(data.net);
-  const max=Math.max(...data.categories.map(c=>c.invested),1);
+  const market=data.market||{available:false,positions:[],errors:[]};
+  qs("#investment-market-value").textContent=market.available?money.format(market.value):"Nicht verfuegbar";
+  qs("#investment-gain").textContent=market.available?money.format(market.gain):"-";
+  qs("#investment-gain").classList.toggle("positive",market.available&&market.gain>=0);
+  qs("#investment-gain-percent").textContent=market.available?`${market.gain>=0?"+":""}${percentNumber.format(market.gain_percent)} % gegenueber bewerteten Einzahlungen`:"gegenueber Nettoeinzahlungen";
+  const dates=market.positions.map(position=>position.as_of).filter(Boolean).sort();
+  qs("#investment-market-date").textContent=dates.length?`Kurse vom ${formatDate(dates[0])}`:"Kursdaten derzeit nicht erreichbar";
+  qs("#investment-market-note").textContent=market.available
+    ?`Naeherung: MSCI World wird mit EUNL.DE, Bitcoin mit CoinGecko berechnet. Buchungstagskurse bilden virtuelle Anteile; Gebuehren, Spread und abweichende ETF-Produkte sind nicht enthalten.${Math.abs(market.unpriced_net||0)>.005?` Nicht bewertete Investments: ${money.format(market.unpriced_net)}.`:""}`
+    :`Live-Schaetzung nicht verfuegbar.${market.errors?.length?" "+market.errors.join(" · "):""}`;
+  const positions=new Map(market.positions.map(position=>[position.category,position]));
+  const max=Math.max(...data.categories.map(c=>positions.get(c.category)?.value||c.invested),1);
   qs("#investment-breakdown").innerHTML=data.categories.length?data.categories.map(c=>`
-    <div class="investment-row"><i style="background:${c.color}"></i><div><strong>${escapeHtml(c.label)}</strong><span>${c.count} Buchungen</span></div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,c.invested/max*100)}%;background:${c.color}"></div></div><b>${money.format(c.invested)}</b></div>`).join(""):'<p class="hint">Ordne Buchungen einer Investment-Kategorie zu. Sie erscheinen dann automatisch hier.</p>';
+    <div class="investment-row"><i style="background:${c.color}"></i><div><strong>${escapeHtml(c.label)}</strong><span>${positions.has(c.category)?`${positions.get(c.category).units.toFixed(c.category.includes("Bitcoin")?8:4)} ${escapeHtml(positions.get(c.category).symbol)} · ${money.format(positions.get(c.category).price)}`:`${c.count} Buchungen`}</span></div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,(positions.get(c.category)?.value||c.invested)/max*100)}%;background:${c.color}"></div></div><b>${positions.has(c.category)?`${money.format(positions.get(c.category).value)} (${positions.get(c.category).gain>=0?"+":""}${percentNumber.format(positions.get(c.category).gain_percent)} %)` : money.format(c.invested)}</b></div>`).join(""):'<p class="hint">Ordne Buchungen einer Investment-Kategorie zu. Sie erscheinen dann automatisch hier.</p>';
   const monthMax=Math.max(...data.months.map(m=>m.invested),1);
   qs("#investment-timeline").innerHTML=data.months.length?data.months.slice(-12).map(m=>`<div class="month-col" title="${m.month}: ${money.format(m.invested)}"><div class="bars"><i class="investment-bar" style="height:${m.invested/monthMax*100}%"></i></div><span>${m.month.slice(5)}</span></div>`).join(""):'<p class="hint">Noch keine Investment-Einzahlungen vorhanden.</p>';
   qs("#investment-rows").innerHTML=data.transactions.length?data.transactions.map(t=>`

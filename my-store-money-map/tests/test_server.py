@@ -138,6 +138,23 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(investments["invested"], 100)
         self.assertEqual(investments["categories"][0]["label"], "MSCI World")
 
+    def test_market_position_converts_cash_flows_to_virtual_units(self):
+        transactions = [
+            {"id": 1, "booked_on": "2026-01-01", "amount_cents": -10000},
+            {"id": 2, "booked_on": "2026-01-03", "amount_cents": 5000},
+        ]
+        asset = {
+            "symbol": "TEST",
+            "provider": "Test",
+            "currency": "EUR",
+            "current": 20,
+            "as_of": "2026-01-04",
+            "prices": {"2026-01-02": 10, "2026-01-03": 20},
+        }
+        result = app.calculate_market_position(transactions, asset)
+        self.assertAlmostEqual(result["units"], 7.5)
+        self.assertAlmostEqual(result["value"], 150)
+
     def test_dashboard_source_filter(self):
         sparkasse = (
             "Buchungstag;Verwendungszweck;Beguenstigter/Zahlungspflichtiger;Betrag;Waehrung\n"

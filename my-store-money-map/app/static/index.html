@@ -202,11 +202,16 @@
     </section>
 
     <section id="investments" class="view">
-      <div class="cards investment-cards">
-        <article class="metric accent"><span>Investiert</span><strong id="invested-total">0 EUR</strong><small>Einzahlungen insgesamt</small></article>
+      <div class="cards">
+        <article class="metric accent"><span>Aktueller Marktwert</span><strong id="investment-market-value">-</strong><small id="investment-market-date">Live-Schaetzung wird geladen</small></article>
+        <article class="metric"><span>Netto eingezahlt</span><strong id="investment-net">0 EUR</strong><small>Einzahlungen minus Rueckfluesse</small></article>
+        <article class="metric"><span>Entwicklung</span><strong id="investment-gain">-</strong><small id="investment-gain-percent">gegenueber Nettoeinzahlungen</small></article>
         <article class="metric"><span>Rueckfluesse</span><strong id="investment-returns">0 EUR</strong><small>Auszahlungen und Verkaeufe</small></article>
-        <article class="metric"><span>Netto investiert</span><strong id="investment-net">0 EUR</strong><small>Einzahlungen minus Rueckfluesse</small></article>
       </div>
+      <article class="panel investment-market-note">
+        <p class="eyebrow">LIVE-SCHAETZUNG</p>
+        <p id="investment-market-note" class="hint">Einzahlungen werden zum Kurs des Buchungstags in virtuelle Anteile umgerechnet.</p>
+      </article>
       <div class="grid two">
         <article class="panel">
           <div class="panel-head"><div><p class="eyebrow">AUFTEILUNG</p><h2>Deine Investments</h2></div></div>
