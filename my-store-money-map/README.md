@@ -19,7 +19,9 @@ Lokaler Personal Finance Manager fuer Umbrel.
 - Interaktives Sankey-Diagramm mit Zeitraum-, Konto-, Fluss- und Kategorienfiltern
 - Konto-zu-Konto-Darstellung interner Transfers zwischen Sparkasse, N26 und PayPal
 - Klickfixierte Detailansicht bis zu einzelnen Buchungen, Suche und vollstaendige Saldodarstellung
-- Monatsdashboard und installierbare PWA
+- Umschaltbare Betrags- oder Prozentanzeige im Geldfluss
+- Monats- und Jahresansicht fuer Dashboard und Buchungen
+- Installierbare PWA
 
 ## Lokal starten
 
@@ -31,5 +33,5 @@ Danach `http://localhost:8080` oeffnen.
 
 Das Umbrel-Paket verwendet ein offizielles Python-Alpine-Image. Beim ersten
 Start wird der zur App-Version passende Quellcode aus dem Git-Tag
-`money-map-v0.5.3` in das persistente App-Verzeichnis geladen. Weitere
+`money-map-v0.5.4` in das persistente App-Verzeichnis geladen. Weitere
 Container-Neustarts funktionieren aus dieser lokalen Kopie.

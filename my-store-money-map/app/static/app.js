@@ -1,4 +1,4 @@
-const state={month:new Date().toISOString().slice(0,7),source:"",dashboardMode:"gross",categories:[],transactions:[],sankey:{data:null,graph:null,selected:null}};
+const state={month:new Date().toISOString().slice(0,7),year:String(new Date().getFullYear()),periodMode:"month",source:"",dashboardMode:"gross",categories:[],transactions:[],sankey:{data:null,graph:null,selected:null}};
 const money=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
 const qs=s=>document.querySelector(s);
 const qsa=s=>[...document.querySelectorAll(s)];
@@ -8,6 +8,14 @@ function toast(message){const el=qs("#toast");el.textContent=message;el.classLis
 function escapeHtml(value=""){return value.replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]))}
 function formatDate(value){return new Intl.DateTimeFormat("de-DE").format(new Date(value+"T12:00:00"))}
 function sourceName(value){return {sparkasse:"Sparkasse",n26:"N26",paypal:"PayPal"}[value]||value}
+function periodQuery(){return state.periodMode==="year"?`year=${state.year}`:`month=${state.month}`}
+function percent(value,total){return `${total?Math.round(value/total*100):0} %`}
+function sankeyValue(value){
+  if(!qs("#sankey-percent-toggle").checked)return money.format(value);
+  const summary=state.sankey.data?.summary||{};
+  const total=(summary.income||0)+(summary.expenses||0)+(summary.transfers||0);
+  return percent(value,total);
+}
 function updateWgAllocationLabels(){
   const housing=Number(qs("#wg-housing-percent").value);
   qs("#wg-housing-label").textContent=`${housing} %`;
@@ -33,10 +41,11 @@ async function loadCategories(){
 }
 
 async function loadDashboard(){
-  const data=await api(`/api/dashboard?month=${state.month}&source=${encodeURIComponent(state.source)}&view=${state.dashboardMode}`);
+  const data=await api(`/api/dashboard?${periodQuery()}&source=${encodeURIComponent(state.source)}&view=${state.dashboardMode}`);
   qs("#income").textContent=money.format(data.totals.income);
   qs("#expenses").textContent=money.format(data.totals.expenses);
   qs("#balance").textContent=money.format(data.balance);
+  qs("#balance-label").textContent=state.periodMode==="year"?"Jahressaldo":"Monatssaldo";
   qs("#expenses-label").textContent=state.dashboardMode==="personal"?"Persoenliche Nettokosten":"Ausgaben";
   qs("#expenses-note").textContent=state.dashboardMode==="personal"?"WG-Einnahmen bereits abgezogen":"ohne interne Transfers";
   qs("#balance-note").textContent=state.dashboardMode==="personal"?"Einnahmen minus persoenliche Nettokosten":"Einnahmen minus Ausgaben";
@@ -51,7 +60,7 @@ async function loadDashboard(){
   qs("#cost-donut").style.background=`conic-gradient(var(--purple) 0 ${share}%,#d8dcff ${share}% 100%)`;
   const max=Math.max(...data.categories.map(c=>c.amount),1);
   qs("#category-bars").innerHTML=data.categories.length?data.categories.map(c=>`
-    <div class="category-row"><label>${escapeHtml(c.category)}</label><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,c.amount/max*100)}%;background:${c.color}"></div></div><strong>${money.format(c.amount)}</strong></div>`).join(""):'<p class="hint">Fuer diesen Monat sind noch keine Ausgaben vorhanden.</p>';
+    <div class="category-row"><label>${escapeHtml(c.category)}</label><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,c.amount/max*100)}%;background:${c.color}"></div></div><strong>${money.format(c.amount)}</strong></div>`).join(""):`<p class="hint">Fuer ${state.periodMode==="year"?"dieses Jahr":"diesen Monat"} sind noch keine Ausgaben vorhanden.</p>`;
   const monthMax=Math.max(...data.months.flatMap(m=>[m.income,m.expenses]),1);
   qs("#timeline").innerHTML=data.months.map(m=>`<div class="month-col" title="${m.month}: ${money.format(m.income)} rein, ${money.format(m.expenses)} raus"><div class="bars"><i style="height:${m.income/monthMax*100}%"></i><i class="out" style="height:${m.expenses/monthMax*100}%"></i></div><span>${m.month.slice(5)}</span></div>`).join("");
 }
@@ -78,7 +87,7 @@ async function loadSharedHousehold(){
 async function loadTransactions(){
   const search=encodeURIComponent(qs("#search").value);
   const category=encodeURIComponent(qs("#category-filter").value);
-  state.transactions=await api(`/api/transactions?month=${state.month}&q=${search}&category=${category}&source=${encodeURIComponent(state.source)}`);
+  state.transactions=await api(`/api/transactions?${periodQuery()}&q=${search}&category=${category}&source=${encodeURIComponent(state.source)}`);
   qs("#transaction-rows").innerHTML=state.transactions.map(t=>`
     <tr>
       <td>${formatDate(t.booked_on)}</td>
@@ -242,19 +251,19 @@ function layoutSankey(graph){
   graph.nodes.forEach(node=>node.value=Math.max(node.incoming||0,node.outgoing||0));
   groups.forEach(nodes=>nodes.sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label,"de")));
   const maxNodes=Math.max(...[...groups.values()].map(nodes=>nodes.length),1);
-  const height=Math.max(680,maxNodes*34+150);
-  const width=1200,nodeWidth=16,gap=10,top=55;
+  const height=Math.max(760,maxNodes*48+220);
+  const width=1200,nodeWidth=16,gap=12,top=65,bottom=130;
   const positions={"inflow":25,"primary-account":285,"secondary-account":650,"category":1170};
   let scale=Infinity;
   groups.forEach(nodes=>{
     const total=nodes.reduce((sum,node)=>sum+node.value,0);
-    const available=height-top-70-gap*Math.max(0,nodes.length-1)-8*nodes.length;
-    if(total)scale=Math.min(scale,Math.max(.02,available/total));
+    const available=height-top-bottom-gap*Math.max(0,nodes.length-1)-8*nodes.length;
+    if(total)scale=Math.min(scale,Math.max(0,available/total));
   });
   if(!Number.isFinite(scale))scale=1;
   groups.forEach((nodes,group)=>{
     const columnHeight=nodes.reduce((sum,node)=>sum+8+node.value*scale,0)+gap*Math.max(0,nodes.length-1);
-    let y=Math.max(top,top+(height-top-70-columnHeight)/2);
+    let y=Math.max(top,top+(height-top-bottom-columnHeight)/2);
     nodes.forEach(node=>{
       node.x=positions[group];
       node.y=y;
@@ -283,11 +292,11 @@ function sankeyDetail(item){
   qs("#sankey-detail-title").textContent=item.label||"Geldstrom";
   qs("#sankey-detail").innerHTML=`
     <div class="sankey-detail-summary">
-      <div><span>Betrag</span><strong>${money.format(total)}</strong></div>
+      <div><span>${qs("#sankey-percent-toggle").checked?"Anteil":"Betrag"}</span><strong>${sankeyValue(total)}</strong></div>
       <div><span>Buchungen</span><strong>${transactions.length}</strong></div>
       <div><span>Anteil am sichtbaren Volumen</span><strong>${state.sankey.data.summary.income+state.sankey.data.summary.expenses?Math.round(total/(state.sankey.data.summary.income+state.sankey.data.summary.expenses)*100):0}%</strong></div>
     </div>
-    ${sorted.slice(0,100).map(transaction=>`<div class="sankey-detail-row"><span>${formatDate(transaction.booked_on)}</span><strong>${escapeHtml(transaction.counterparty)}<small>${escapeHtml(transaction.description||transaction.booking_type||"")}</small></strong><strong>${money.format(transaction.amount)}</strong></div>`).join("")}
+    ${sorted.slice(0,100).map(transaction=>`<div class="sankey-detail-row"><span>${formatDate(transaction.booked_on)}</span><strong>${escapeHtml(transaction.counterparty)}<small>${escapeHtml(transaction.description||transaction.booking_type||"")}</small></strong><strong>${qs("#sankey-percent-toggle").checked?percent(Math.abs(transaction.amount),total):money.format(transaction.amount)}</strong></div>`).join("")}
     ${sorted.length>100?`<p class="hint">Weitere ${sorted.length-100} Buchungen sind in dieser Summe enthalten.</p>`:""}`;
 }
 
@@ -300,9 +309,11 @@ function renderSankey(){
   const transferCount=qs("#sankey-transfer-toggle").checked?state.sankey.data.transactions.filter(transaction=>transaction.is_transfer).length:0;
   const income=qs("#sankey-income-toggle").checked?visible.filter(transaction=>transaction.amount>0).reduce((sum,transaction)=>sum+transaction.amount,0):0;
   const expenses=qs("#sankey-expense-toggle").checked?visible.filter(transaction=>transaction.amount<0).reduce((sum,transaction)=>sum-transaction.amount,0):0;
-  qs("#sankey-income").textContent=money.format(income);
-  qs("#sankey-expenses").textContent=money.format(expenses);
-  qs("#sankey-balance").textContent=money.format(income-expenses);
+  const percentMode=qs("#sankey-percent-toggle").checked;
+  const percentBase=income||expenses;
+  qs("#sankey-income").textContent=percentMode?percent(income,percentBase):money.format(income);
+  qs("#sankey-expenses").textContent=percentMode?percent(expenses,percentBase):money.format(expenses);
+  qs("#sankey-balance").textContent=percentMode?percent(income-expenses,percentBase):money.format(income-expenses);
   qs("#sankey-count").textContent=visible.length+transferCount;
   if(!graph.links.length){
     svg.innerHTML="";empty.classList.remove("hidden");return;
@@ -329,7 +340,7 @@ function renderSankey(){
     return `<g class="sankey-node ${selected?"selected":""}" data-node="${escapeHtml(node.id)}">
       <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="4" fill="${node.color}"/>
       <text x="${labelX}" y="${node.y+Math.min(13,node.height/2)}" text-anchor="${anchor}">${escapeHtml(shortLabel(node.label))}</text>
-      <text class="node-value" x="${labelX}" y="${node.y+Math.min(27,node.height/2+14)}" text-anchor="${anchor}">${escapeHtml(money.format(node.value))}</text>
+      <text class="node-value" x="${labelX}" y="${node.y+Math.min(27,node.height/2+14)}" text-anchor="${anchor}">${escapeHtml(sankeyValue(node.value))}</text>
     </g>`;
   }).join("");
   svg.innerHTML=`${titles}${links}${nodes}`;
@@ -440,6 +451,7 @@ async function upload(){
 
 async function init(){
   qs("#month").value=state.month;
+  qs("#year").value=state.year;
   const today=new Date();
   qs("#wg-start").value=`${today.getFullYear()}-01-01`;
   qs("#wg-end").value=today.toISOString().slice(0,10);
@@ -454,11 +466,18 @@ async function init(){
     qsa(".nav,.view").forEach(el=>el.classList.remove("active"));button.classList.add("active");qs(`#${button.dataset.view}`).classList.add("active");
     qs("#page-title").textContent=button.textContent;
     const filtered=["dashboard","transactions"].includes(button.dataset.view);
-    qs("#month").parentElement.style.display=filtered?"flex":"none";
+    qs(".period-control").style.display=filtered?"flex":"none";
     qs("#source-filter").parentElement.style.display=filtered?"flex":"none";
     if(button.dataset.view==="cashflow")setTimeout(()=>renderSankey(),0);
   }));
   qs("#month").addEventListener("change",async e=>{state.month=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
+  qs("#year").addEventListener("change",async e=>{state.year=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
+  qs("#period-mode").addEventListener("change",async e=>{
+    state.periodMode=e.target.value;
+    qs("#month").classList.toggle("hidden",state.periodMode!=="month");
+    qs("#year").classList.toggle("hidden",state.periodMode!=="year");
+    await Promise.all([loadDashboard(),loadTransactions()]);
+  });
   qs("#source-filter").addEventListener("change",async e=>{state.source=e.target.value;await Promise.all([loadDashboard(),loadTransactions()])});
   qsa(".dashboard-mode").forEach(button=>button.addEventListener("click",async()=>{
     qsa(".dashboard-mode").forEach(item=>item.classList.remove("active"));
@@ -491,6 +510,15 @@ async function init(){
   qs("#sankey-income-toggle").addEventListener("change",renderSankey);
   qs("#sankey-expense-toggle").addEventListener("change",renderSankey);
   qs("#sankey-transfer-toggle").addEventListener("change",()=>loadSankey().catch(error=>toast(error.message)));
+  qs("#sankey-percent-toggle").addEventListener("change",()=>{
+    if(state.sankey.selected){
+      const item=state.sankey.selected.type==="node"
+        ?state.sankey.graph.nodes.find(node=>node.id===state.sankey.selected.key)
+        :state.sankey.graph.links.find(link=>link.id===state.sankey.selected.key);
+      if(item)sankeyDetail(state.sankey.selected.type==="link"?{...item,label:`${item.sourceNode.label} → ${item.targetNode.label}`}:item);
+    }
+    renderSankey();
+  });
   qs("#sankey-search").addEventListener("input",applySankeySearch);
   qs("#transaction-rows").addEventListener("click",e=>{const button=e.target.closest(".make-rule");if(button)openRule(state.transactions.find(t=>t.id===Number(button.dataset.id))).catch(error=>toast(error.message))});
   qs("#transaction-rows").addEventListener("change",async e=>{

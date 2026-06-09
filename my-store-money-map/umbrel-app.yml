@@ -4,7 +4,7 @@ name: MoneyMap
 tagline: Private Finanzen aus Sparkasse, N26 und PayPal
 icon: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-money-map/app/static/icon.svg
 category: finance
-version: "0.5.3"
+version: "0.5.4"
 port: 8743
 description: >-
   MoneyMap ist ein privater Personal Finance Manager fuer dein Umbrel.
@@ -28,7 +28,7 @@ submission: https://github.com/jocowhite/my-umbrel-apps
 repo: https://github.com/jocowhite/my-umbrel-apps
 support: https://github.com/jocowhite/my-umbrel-apps/issues
 gallery: []
-releaseNotes: "Geldfluss mit korrekten Konto-Transfers, vollstaendiger Diagrammhoehe und einstellbarer Mietaufteilung fuer WG-Kosten."
+releaseNotes: "Vollstaendiger Geldfluss mit privatem Prozentmodus sowie Monats- und Jahresansicht fuer Dashboard und Buchungen."
 dependencies: []
 path: ""
 defaultUsername: ""

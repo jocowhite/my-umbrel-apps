@@ -152,6 +152,20 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(app.dashboard("2026-06", "sparkasse")["totals"]["expenses"], 20)
         self.assertEqual(app.dashboard("2026-06", "n26")["totals"]["expenses"], 15)
 
+    def test_dashboard_supports_year_view(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-01-02,REWE,Card,Einkauf,-20.00\n"
+            "2026-06-02,CinemaxX,Card,Film,-15.00\n"
+            "2025-12-31,Old Shop,Card,Alt,-50.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        result = app.dashboard(None, year="2026")
+        self.assertEqual(result["totals"]["expenses"], 35)
+        self.assertEqual(result["period"], "year")
+        self.assertEqual(result["year"], "2026")
+        self.assertEqual([row["month"] for row in result["months"]], ["2026-01", "2026-06"])
+
     def test_personal_dashboard_nets_shared_household_income(self):
         raw = (
             "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"

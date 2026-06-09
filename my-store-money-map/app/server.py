@@ -511,6 +511,22 @@ def month_range(month: str | None) -> tuple[str, str]:
     return start.isoformat(), end.isoformat()
 
 
+def year_range(year: str | None) -> tuple[str, str]:
+    if not year or not re.fullmatch(r"\d{4}", year):
+        year = str(date.today().year)
+    start = date(int(year), 1, 1)
+    end = date(start.year + 1, 1, 1)
+    return start.isoformat(), end.isoformat()
+
+
+def period_range(month: str | None, year: str | None) -> tuple[str, str, str]:
+    if year:
+        start, end = year_range(year)
+        return start, end, "year"
+    start, end = month_range(month)
+    return start, end, "month"
+
+
 def is_investment_sql(alias: str = "") -> str:
     column = f"{alias}.category" if alias else "category"
     return f"({column} = 'Investieren' OR {column} LIKE 'Investieren · %')"
@@ -529,9 +545,12 @@ def source_clause(source: str | None, alias: str = "") -> tuple[str, list[str]]:
 
 
 def dashboard(
-    month: str | None, source: str | None = None, view: str | None = None
+    month: str | None,
+    source: str | None = None,
+    view: str | None = None,
+    year: str | None = None,
 ) -> dict:
-    start, end = month_range(month)
+    start, end, period = period_range(month, year)
     personal = view == "personal"
     special_filter = is_special_flow_sql()
     special_filter_t = is_special_flow_sql("t")
@@ -572,6 +591,10 @@ def dashboard(
     )
     source_sql, source_params = source_clause(source)
     source_sql_t, source_params_t = source_clause(source, "t")
+    timeline_period_sql = " AND booked_on >= ? AND booked_on < ?" if period == "year" else ""
+    timeline_params = [*source_params]
+    if period == "year":
+        timeline_params.extend([start, end])
     with connect() as conn:
         totals = conn.execute(
             f"""
@@ -604,10 +627,10 @@ def dashboard(
             SELECT substr(booked_on, 1, 7) month,
                 SUM(CASE WHEN {income_condition} THEN amount_cents ELSE 0 END) income,
                 {expenses_expression} expenses
-            FROM transactions WHERE 1=1 {source_sql}
+            FROM transactions WHERE 1=1 {source_sql} {timeline_period_sql}
             GROUP BY substr(booked_on, 1, 7) ORDER BY month DESC LIMIT 12
             """,
-            source_params,
+            timeline_params,
         ).fetchall()
         uncategorized = conn.execute(
             f"""
@@ -619,6 +642,8 @@ def dashboard(
         ).fetchone()[0]
     return {
         "month": start[:7],
+        "year": start[:4],
+        "period": period,
         "totals": {key: totals[key] / 100 if key != "count" else totals[key] for key in totals.keys()},
         "balance": (totals["income"] - totals["expenses"]) / 100,
         "categories": [
@@ -954,7 +979,7 @@ def disable_category(category: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.5.3"
+    server_version = "MoneyMap/0.5.4"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -1003,6 +1028,7 @@ class Handler(BaseHTTPRequestHandler):
                         query.get("month", [None])[0],
                         query.get("source", [""])[0],
                         query.get("view", [""])[0],
+                        query.get("year", [None])[0],
                     )
                 )
             elif parsed.path == "/api/shared-household":
@@ -1029,7 +1055,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(outlays())
             elif parsed.path == "/api/transactions":
                 month = query.get("month", [None])[0]
-                start, end = month_range(month) if month else ("0000-01-01", "9999-12-31")
+                year = query.get("year", [None])[0]
+                start, end, _ = (
+                    period_range(month, year)
+                    if month or year
+                    else ("0000-01-01", "9999-12-31", "all")
+                )
                 category = query.get("category", [""])[0]
                 source = query.get("source", [""])[0]
                 search = query.get("q", [""])[0].strip()

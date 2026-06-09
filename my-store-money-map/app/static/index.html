@@ -38,7 +38,14 @@
             <option value="paypal">PayPal</option>
           </select>
         </label>
-        <label class="month-control">Monat <input id="month" type="month"></label>
+        <div class="period-control">
+          <select id="period-mode" aria-label="Zeitraum">
+            <option value="month">Monat</option>
+            <option value="year">Jahr</option>
+          </select>
+          <input id="month" type="month" aria-label="Monat">
+          <input id="year" class="hidden" type="number" min="2000" max="2100" step="1" aria-label="Jahr">
+        </div>
       </div>
     </header>
 
@@ -50,7 +57,7 @@
       <div class="cards">
         <article class="metric"><span>Einnahmen</span><strong id="income">0 EUR</strong><small>ohne interne Transfers</small></article>
         <article class="metric"><span id="expenses-label">Ausgaben</span><strong id="expenses">0 EUR</strong><small id="expenses-note">ohne interne Transfers</small></article>
-        <article class="metric accent"><span>Monatssaldo</span><strong id="balance">0 EUR</strong><small id="balance-note">Einnahmen minus Ausgaben</small></article>
+        <article class="metric accent"><span id="balance-label">Monatssaldo</span><strong id="balance">0 EUR</strong><small id="balance-note">Einnahmen minus Ausgaben</small></article>
         <article class="metric"><span>Noch offen</span><strong id="uncategorized">0</strong><small>unkategorisierte Buchungen</small></article>
       </div>
       <div class="grid two">
@@ -98,6 +105,7 @@
             <label><input id="sankey-income-toggle" type="checkbox" checked> Einnahmen</label>
             <label><input id="sankey-expense-toggle" type="checkbox" checked> Ausgaben</label>
             <label><input id="sankey-transfer-toggle" type="checkbox" checked> Interne Transfers</label>
+            <label><input id="sankey-percent-toggle" type="checkbox"> Nur Prozentwerte</label>
           </fieldset>
           <details class="category-picker">
             <summary>Kategorien auswaehlen <span id="sankey-category-count">Alle</span></summary>
