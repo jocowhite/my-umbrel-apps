@@ -649,8 +649,18 @@ def parse_range(start_value: str | None, end_value: str | None) -> tuple[str, st
     return start.isoformat(), (end + timedelta(days=1)).isoformat()
 
 
-def shared_household(start_value: str | None, end_value: str | None) -> dict:
+def shared_household(
+    start_value: str | None,
+    end_value: str | None,
+    housing_percent_value: str | int | None = None,
+) -> dict:
     start, end = parse_range(start_value, end_value)
+    try:
+        housing_percent = int(housing_percent_value if housing_percent_value is not None else 100)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Der Wohnanteil muss zwischen 0 und 100 Prozent liegen.") from exc
+    if not 0 <= housing_percent <= 100:
+        raise ValueError("Der Wohnanteil muss zwischen 0 und 100 Prozent liegen.")
     with connect() as conn:
         rows = conn.execute(
             """
@@ -674,11 +684,19 @@ def shared_household(start_value: str | None, end_value: str | None) -> dict:
             """,
             (start, end),
         ).fetchall()
+    total_received_cents = sum(
+        row["received_cents"] for row in rows
+    )
+    housing_received_cents = round(total_received_cents * housing_percent / 100)
+    received_by_category = {
+        "Wohnen": housing_received_cents,
+        "Haushalt": total_received_cents - housing_received_cents,
+    }
     breakdown = []
     for category in ("Wohnen", "Haushalt"):
         row = next((item for item in rows if item["category"] == category), None)
         paid = row["paid_cents"] if row else 0
-        received = row["received_cents"] if row else 0
+        received = received_by_category[category]
         breakdown.append(
             {
                 "category": category,
@@ -696,6 +714,8 @@ def shared_household(start_value: str | None, end_value: str | None) -> dict:
         "paid": paid,
         "received": received,
         "net": paid - received,
+        "housing_percent": housing_percent,
+        "household_percent": 100 - housing_percent,
         "categories": breakdown,
         "transactions": [row_dict(row) for row in transactions],
     }
@@ -721,7 +741,10 @@ def sankey_data(
         params.extend(valid_sources)
     if selected_categories:
         placeholders = ",".join("?" for _ in selected_categories)
-        clauses.append(f"t.category IN ({placeholders})")
+        category_clause = f"t.category IN ({placeholders})"
+        if include_transfers:
+            category_clause = f"({category_clause} OR t.is_transfer=1)"
+        clauses.append(category_clause)
         params.extend(selected_categories)
     if not include_transfers:
         clauses.append("t.is_transfer=0")
@@ -931,7 +954,7 @@ def disable_category(category: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.5.2"
+    server_version = "MoneyMap/0.5.3"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -987,6 +1010,7 @@ class Handler(BaseHTTPRequestHandler):
                     shared_household(
                         query.get("start", [None])[0],
                         query.get("end", [None])[0],
+                        query.get("housing_percent", [None])[0],
                     )
                 )
             elif parsed.path == "/api/sankey":

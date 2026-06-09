@@ -97,7 +97,7 @@
             <legend>Fluesse</legend>
             <label><input id="sankey-income-toggle" type="checkbox" checked> Einnahmen</label>
             <label><input id="sankey-expense-toggle" type="checkbox" checked> Ausgaben</label>
-            <label><input id="sankey-transfer-toggle" type="checkbox"> Interne Transfers</label>
+            <label><input id="sankey-transfer-toggle" type="checkbox" checked> Interne Transfers</label>
           </fieldset>
           <details class="category-picker">
             <summary>Kategorien auswaehlen <span id="sankey-category-count">Alle</span></summary>
@@ -156,6 +156,18 @@
         <label>Von <input id="wg-start" type="date"></label>
         <label>Bis <input id="wg-end" type="date"></label>
         <button class="primary" id="wg-apply">Auswerten</button>
+      </article>
+      <article class="panel wg-allocation">
+        <div>
+          <p class="eyebrow">MIETAUFTEILUNG</p>
+          <h2>Einnahmen auf Wohnen und Haushalt verteilen</h2>
+          <p class="hint">Der Regler verteilt alle positiven WG-Zahlungen im gewaehlten Zeitraum.</p>
+        </div>
+        <label for="wg-housing-percent">
+          <span>Wohnen <strong id="wg-housing-label">100 %</strong></span>
+          <input id="wg-housing-percent" type="range" min="0" max="100" step="1" value="100">
+          <span>Haushalt <strong id="wg-household-label">0 %</strong></span>
+        </label>
       </article>
       <div class="cards investment-cards">
         <article class="metric"><span>Gezahlt</span><strong id="wg-paid">0 EUR</strong><small>Wohnen und Haushalt</small></article>

@@ -8,6 +8,11 @@ function toast(message){const el=qs("#toast");el.textContent=message;el.classLis
 function escapeHtml(value=""){return value.replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]))}
 function formatDate(value){return new Intl.DateTimeFormat("de-DE").format(new Date(value+"T12:00:00"))}
 function sourceName(value){return {sparkasse:"Sparkasse",n26:"N26",paypal:"PayPal"}[value]||value}
+function updateWgAllocationLabels(){
+  const housing=Number(qs("#wg-housing-percent").value);
+  qs("#wg-housing-label").textContent=`${housing} %`;
+  qs("#wg-household-label").textContent=`${100-housing} %`;
+}
 function categoryOptions(selected=""){
   const byName=(a,b)=>a.name.localeCompare(b.name,"de");
   const regular=state.categories.filter(c=>!c.name.startsWith("Investieren · ")).sort(byName);
@@ -54,7 +59,8 @@ async function loadDashboard(){
 async function loadSharedHousehold(){
   const start=qs("#wg-start").value;
   const end=qs("#wg-end").value;
-  const data=await api(`/api/shared-household?start=${start}&end=${end}`);
+  const housingPercent=Number(qs("#wg-housing-percent").value);
+  const data=await api(`/api/shared-household?start=${start}&end=${end}&housing_percent=${housingPercent}`);
   qs("#wg-paid").textContent=money.format(data.paid);
   qs("#wg-received").textContent=money.format(data.received);
   qs("#wg-net").textContent=money.format(data.net);
@@ -161,8 +167,7 @@ function buildSankeyGraph(){
     return {id:`account:${source}`,label:label||sourceName(source),group:primary?"primary-account":"secondary-account",type:"account",color:primary?"#3448c5":"#101828",source};
   };
   const inflowNode=(transaction)=>{
-    const primary=transaction.source==="sparkasse";
-    return {id:`inflow:${transaction.source}:${transaction.category}`,label:`Eingang · ${transaction.category}`,group:primary?"primary-inflow":"secondary-inflow",type:"inflow",color:transaction.color,direction:"income"};
+    return {id:`inflow:${transaction.source}:${transaction.category}`,label:`Eingang · ${transaction.category}`,group:"inflow",type:"inflow",color:transaction.color,direction:"income"};
   };
   const categoryNode=(transaction)=>({id:`category:${transaction.category}`,label:transaction.category,group:"category",type:"category",color:transaction.color,direction:"expense"});
   const balanceFor=(source,label)=>{
@@ -172,7 +177,6 @@ function buildSankeyGraph(){
   const transferGroups=new Map();
   data.transactions.forEach(transaction=>{
     if(transaction.is_transfer){
-      if(!showTransfers)return;
       if(!transferGroups.has(transaction.transfer_group))transferGroups.set(transaction.transfer_group,[]);
       transferGroups.get(transaction.transfer_group).push(transaction);
       return;
@@ -203,7 +207,7 @@ function buildSankeyGraph(){
     const to=accountNode(toSource,incoming?.account_label||"Anderes eigenes Konto");
     if(outgoing)balanceFor(outgoing.source,outgoing.account_label).transferOut+=value;
     if(incoming)balanceFor(incoming.source,incoming.account_label).transferIn+=value;
-    addPath([from,to],group,value);
+    if(showTransfers)addPath([from,to],group,value);
   });
   if(showIncome&&showExpenses){
     accountBalances.forEach(balance=>{
@@ -214,7 +218,7 @@ function buildSankeyGraph(){
         {id:`balance:${balance.account.id}:positive`,label:"Zeitraumueberschuss",group:"category",type:"balance",color:"#1f9d73"}
       ],[],difference);
       else addPath([
-        {id:`balance:${balance.account.id}:negative`,label:"Aus Startbestand / Ruecklagen",group:balance.account.source==="sparkasse"?"primary-inflow":"secondary-inflow",type:"balance",color:"#f59e0b"},
+        {id:`balance:${balance.account.id}:negative`,label:"Aus Startbestand / Ruecklagen",group:"inflow",type:"balance",color:"#f59e0b"},
         balance.account
       ],[],-difference);
     });
@@ -238,19 +242,19 @@ function layoutSankey(graph){
   graph.nodes.forEach(node=>node.value=Math.max(node.incoming||0,node.outgoing||0));
   groups.forEach(nodes=>nodes.sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label,"de")));
   const maxNodes=Math.max(...[...groups.values()].map(nodes=>nodes.length),1);
-  const height=Math.max(640,maxNodes*24+105);
+  const height=Math.max(680,maxNodes*34+150);
   const width=1200,nodeWidth=16,gap=10,top=55;
-  const positions={"primary-inflow":25,"primary-account":245,"secondary-inflow":440,"secondary-account":650,"category":1170};
+  const positions={"inflow":25,"primary-account":285,"secondary-account":650,"category":1170};
   let scale=Infinity;
   groups.forEach(nodes=>{
     const total=nodes.reduce((sum,node)=>sum+node.value,0);
-    const available=height-top-30-gap*Math.max(0,nodes.length-1)-8*nodes.length;
+    const available=height-top-70-gap*Math.max(0,nodes.length-1)-8*nodes.length;
     if(total)scale=Math.min(scale,Math.max(.02,available/total));
   });
   if(!Number.isFinite(scale))scale=1;
   groups.forEach((nodes,group)=>{
     const columnHeight=nodes.reduce((sum,node)=>sum+8+node.value*scale,0)+gap*Math.max(0,nodes.length-1);
-    let y=Math.max(top,top+(height-top-30-columnHeight)/2);
+    let y=Math.max(top,top+(height-top-70-columnHeight)/2);
     nodes.forEach(node=>{
       node.x=positions[group];
       node.y=y;
@@ -293,16 +297,19 @@ function renderSankey(){
   const svg=qs("#sankey-svg");
   const empty=qs("#sankey-empty");
   const visible=state.sankey.data.transactions.filter(transaction=>!transaction.is_transfer);
+  const transferCount=qs("#sankey-transfer-toggle").checked?state.sankey.data.transactions.filter(transaction=>transaction.is_transfer).length:0;
   const income=qs("#sankey-income-toggle").checked?visible.filter(transaction=>transaction.amount>0).reduce((sum,transaction)=>sum+transaction.amount,0):0;
   const expenses=qs("#sankey-expense-toggle").checked?visible.filter(transaction=>transaction.amount<0).reduce((sum,transaction)=>sum-transaction.amount,0):0;
   qs("#sankey-income").textContent=money.format(income);
   qs("#sankey-expenses").textContent=money.format(expenses);
   qs("#sankey-balance").textContent=money.format(income-expenses);
+  qs("#sankey-count").textContent=visible.length+transferCount;
   if(!graph.links.length){
     svg.innerHTML="";empty.classList.remove("hidden");return;
   }
   empty.classList.add("hidden");
   const layout=layoutSankey(graph);
+  qs("#sankey-stage").style.height=`${layout.height}px`;
   svg.setAttribute("viewBox",`0 0 ${layout.width} ${layout.height}`);
   svg.setAttribute("preserveAspectRatio","xMidYMid meet");
   const links=graph.links.map(link=>{
@@ -313,7 +320,7 @@ function renderSankey(){
     const selected=state.sankey.selected?.type==="link"&&state.sankey.selected.key===link.id;
     return `<path class="sankey-link ${selected?"selected":""}" data-link="${escapeHtml(link.id)}" d="${path}" stroke="${link.color}" stroke-width="${link.width}"/>`;
   }).join("");
-  const titles=`<text class="sankey-column-title" x="25" y="25">EINGAENGE &amp; SPARKASSE</text><text class="sankey-column-title" x="570" y="25">N26 &amp; PAYPAL</text><text class="sankey-column-title" x="1170" y="25" text-anchor="end">KATEGORIEN &amp; SALDO</text>`;
+  const titles=`<text class="sankey-column-title" x="25" y="25">EINGAENGE</text><text class="sankey-column-title" x="285" y="25">SPARKASSE</text><text class="sankey-column-title" x="650" y="25">N26 &amp; PAYPAL</text><text class="sankey-column-title" x="1170" y="25" text-anchor="end">KATEGORIEN &amp; SALDO</text>`;
   const nodes=graph.nodes.map(node=>{
     const rightSide=node.group==="category";
     const labelX=rightSide?node.x-8:node.x+node.width+8;
@@ -368,7 +375,7 @@ async function loadSankey(){
   if(!categories.length){
     state.sankey.data={summary:{income:0,expenses:0,balance:0,transfers:0,count:0},transactions:[]};
   }else{
-    const params=new URLSearchParams({start:qs("#sankey-start").value,end:qs("#sankey-end").value,transfers:qs("#sankey-transfer-toggle").checked?"1":"0"});
+    const params=new URLSearchParams({start:qs("#sankey-start").value,end:qs("#sankey-end").value,transfers:"1"});
     sources.forEach(source=>params.append("source",source));
     if(categories.length<state.categories.length)categories.forEach(category=>params.append("category",category));
     state.sankey.data=await api(`/api/sankey?${params}`);
@@ -436,6 +443,9 @@ async function init(){
   const today=new Date();
   qs("#wg-start").value=`${today.getFullYear()}-01-01`;
   qs("#wg-end").value=today.toISOString().slice(0,10);
+  const savedHousingPercent=localStorage.getItem("moneyMapWgHousingPercent");
+  qs("#wg-housing-percent").value=savedHousingPercent===null?"100":savedHousingPercent;
+  updateWgAllocationLabels();
   qs("#sankey-start").value=`${today.getFullYear()}-01-01`;
   qs("#sankey-end").value=today.toISOString().slice(0,10);
   await loadCategories();
@@ -457,6 +467,11 @@ async function init(){
     await loadDashboard();
   }));
   qs("#wg-apply").addEventListener("click",()=>loadSharedHousehold().catch(error=>toast(error.message)));
+  qs("#wg-housing-percent").addEventListener("input",()=>{
+    localStorage.setItem("moneyMapWgHousingPercent",qs("#wg-housing-percent").value);
+    updateWgAllocationLabels();
+  });
+  qs("#wg-housing-percent").addEventListener("change",()=>loadSharedHousehold().catch(error=>toast(error.message)));
   let timer;qs("#search").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(loadTransactions,250)});
   qs("#category-filter").addEventListener("change",loadTransactions);
   qs("#sankey-apply").addEventListener("click",()=>loadSankey().catch(error=>toast(error.message)));

@@ -194,6 +194,35 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(result["net"], 670)
         self.assertEqual(len(result["transactions"]), 3)
 
+    def test_shared_household_allocates_received_rent_by_percentage(self):
+        raw = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-01,Vermieter,Bank Transfer,Miete,-1000.00\n"
+            "2026-06-02,Supermarkt,Card,WG Einkauf,-200.00\n"
+            "2026-06-03,Mitbewohner,Bank Transfer,Mietanteil,600.00\n"
+        ).encode()
+        app.import_csv(raw, "n26", "n26.csv")
+        with app.connect() as conn:
+            conn.execute(
+                "UPDATE transactions SET category='Wohnen', is_manual=1 WHERE payee IN ('Vermieter','Mitbewohner')"
+            )
+            conn.execute(
+                "UPDATE transactions SET category='Haushalt', is_manual=1 WHERE payee='Supermarkt'"
+            )
+        result = app.shared_household("2026-06-01", "2026-06-30", 75)
+        housing = next(row for row in result["categories"] if row["category"] == "Wohnen")
+        household = next(row for row in result["categories"] if row["category"] == "Haushalt")
+        self.assertEqual(housing["received"], 450)
+        self.assertEqual(housing["net"], 550)
+        self.assertEqual(household["received"], 150)
+        self.assertEqual(household["net"], 50)
+        self.assertEqual(result["housing_percent"], 75)
+        self.assertEqual(result["net"], 600)
+
+    def test_shared_household_rejects_invalid_allocation(self):
+        with self.assertRaisesRegex(ValueError, "zwischen 0 und 100"):
+            app.shared_household("2026-06-01", "2026-06-30", 101)
+
     def test_sankey_data_filters_and_includes_full_transaction_detail(self):
         raw = (
             "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
@@ -251,6 +280,27 @@ class MoneyMapTests(unittest.TestCase):
         self.assertEqual(incoming["source"], "n26")
         self.assertEqual(incoming["account"], "Hauptkonto")
         self.assertEqual(outgoing["transfer_group"], incoming["transfer_group"])
+
+    def test_sankey_keeps_transfers_when_categories_are_filtered(self):
+        sparkasse = (
+            "Buchungstag;Verwendungszweck;Beguenstigter/Zahlungspflichtiger;Betrag;Waehrung\n"
+            "01.06.2026;Umbuchung;N26;-100,00;EUR\n"
+        ).encode()
+        n26 = (
+            "Date,Payee,Transaction type,Payment reference,Amount (EUR)\n"
+            "2026-06-02,Test User,Bank Transfer,Umbuchung,100.00\n"
+            "2026-06-03,REWE,Card,Einkauf,-25.00\n"
+        ).encode()
+        app.import_csv(sparkasse, "sparkasse", "sparkasse.csv")
+        app.import_csv(n26, "n26", "n26.csv")
+        rows = app.sankey_data(
+            "2026-06-01",
+            "2026-06-30",
+            categories=["Lebensmittel"],
+            include_transfers=True,
+        )["transactions"]
+        self.assertEqual(len([row for row in rows if row["is_transfer"]]), 2)
+        self.assertEqual(len([row for row in rows if not row["is_transfer"]]), 1)
 
     def test_outlays_are_balanced_and_excluded_from_dashboard(self):
         raw = (

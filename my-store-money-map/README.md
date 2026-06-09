@@ -15,6 +15,7 @@ Lokaler Personal Finance Manager fuer Umbrel.
 - Kategorienuebersicht nach Nutzung mit Aufraeumfunktion
 - Persoenliche Kostenansicht mit Verrechnung von WG-Einnahmen
 - Eigene WG-Auswertung fuer Wohnen und Haushalt mit frei waehlbarem Zeitraum
+- Einstellbare prozentuale Aufteilung der WG-Einnahmen auf Wohnen und Haushalt
 - Interaktives Sankey-Diagramm mit Zeitraum-, Konto-, Fluss- und Kategorienfiltern
 - Konto-zu-Konto-Darstellung interner Transfers zwischen Sparkasse, N26 und PayPal
 - Klickfixierte Detailansicht bis zu einzelnen Buchungen, Suche und vollstaendige Saldodarstellung
@@ -30,5 +31,5 @@ Danach `http://localhost:8080` oeffnen.
 
 Das Umbrel-Paket verwendet ein offizielles Python-Alpine-Image. Beim ersten
 Start wird der zur App-Version passende Quellcode aus dem Git-Tag
-`money-map-v0.5.2` in das persistente App-Verzeichnis geladen. Weitere
+`money-map-v0.5.3` in das persistente App-Verzeichnis geladen. Weitere
 Container-Neustarts funktionieren aus dieser lokalen Kopie.
