@@ -5,6 +5,9 @@ services:
     environment:
       APP_HOST: my-store-money-map_server_1
       APP_PORT: 8080
+    networks:
+      - default
+      - money_map_backend
 
   server:
     image: python:3.13-alpine
@@ -14,18 +17,26 @@ services:
       - sh
       - -c
       - |
-        mkdir -p /runtime/0.5.5/static
-        if [ ! -f /runtime/0.5.5/server.py ]; then
-          wget -qO /runtime/0.5.5/server.py "$${BASE_URL}/server.py"
+        mkdir -p /runtime/0.5.6/static
+        if [ ! -f /runtime/0.5.6/server.py ]; then
+          wget -qO /runtime/0.5.6/server.py "$${BASE_URL}/server.py"
           for file in index.html styles.css app.js manifest.webmanifest service-worker.js icon.svg; do
-            wget -qO "/runtime/0.5.5/static/$${file}" "$${BASE_URL}/static/$${file}"
+            wget -qO "/runtime/0.5.6/static/$${file}" "$${BASE_URL}/static/$${file}"
           done
         fi
-        exec python /runtime/0.5.5/server.py
+        exec python /runtime/0.5.6/server.py
     environment:
       DATA_DIR: /data
       PORT: 8080
-      BASE_URL: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/money-map-v0.5.5/my-store-money-map/app
+      BASE_URL: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/money-map-v0.5.6/my-store-money-map/app
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - ${APP_DATA_DIR}/runtime:/runtime
+    networks:
+      - money_map_backend
+      - money_map_egress
+
+networks:
+  money_map_backend:
+    internal: true
+  money_map_egress:

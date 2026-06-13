@@ -24,6 +24,15 @@ Lokaler Personal Finance Manager fuer Umbrel.
 - Monats- und Jahresansicht fuer Dashboard und Buchungen
 - Installierbare PWA
 
+## Datenschutz
+
+- Kontoauszuege und Auswertungen liegen ausschliesslich im lokalen
+  Umbrel-App-Datenverzeichnis und gehoeren nicht zum Git-Repository.
+- Der Datenserver ist nur mit dem authentifizierten Umbrel-App-Proxy ueber ein
+  privates internes Docker-Netz verbunden. Ein separates Ausgangsnetz dient
+  ausschliesslich dem Abruf oeffentlicher Kursdaten. Andere App-Container
+  koennen die API nicht direkt erreichen.
+
 ## Lokal starten
 
 ```bash
@@ -34,5 +43,5 @@ Danach `http://localhost:8080` oeffnen.
 
 Das Umbrel-Paket verwendet ein offizielles Python-Alpine-Image. Beim ersten
 Start wird der zur App-Version passende Quellcode aus dem Git-Tag
-`money-map-v0.5.5` in das persistente App-Verzeichnis geladen. Weitere
+`money-map-v0.5.6` in das persistente App-Verzeichnis geladen. Weitere
 Container-Neustarts funktionieren aus dieser lokalen Kopie.

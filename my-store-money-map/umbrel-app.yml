@@ -4,7 +4,7 @@ name: MoneyMap
 tagline: Private Finanzen aus Sparkasse, N26 und PayPal
 icon: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-money-map/app/static/icon.svg
 category: finance
-version: "0.5.5"
+version: "0.5.6"
 port: 8743
 description: >-
   MoneyMap ist ein privater Personal Finance Manager fuer dein Umbrel.
@@ -28,7 +28,7 @@ submission: https://github.com/jocowhite/my-umbrel-apps
 repo: https://github.com/jocowhite/my-umbrel-apps
 support: https://github.com/jocowhite/my-umbrel-apps/issues
 gallery: []
-releaseNotes: "Live-Portfoliowert fuer MSCI World und Bitcoin mit historischen Buchungstagskursen, aktuellem Marktwert und Entwicklung."
+releaseNotes: "Die Daten-API ist nur noch ueber den authentifizierten Umbrel-Proxy erreichbar und vom gemeinsamen App-Netz isoliert."
 dependencies: []
 path: ""
 defaultUsername: ""

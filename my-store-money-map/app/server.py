@@ -1179,7 +1179,7 @@ def disable_category(category: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MoneyMap/0.5.5"
+    server_version = "MoneyMap/0.5.6"
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
