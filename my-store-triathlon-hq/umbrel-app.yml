@@ -1,18 +1,18 @@
 manifestVersion: 1.1
 id: my-store-triathlon-hq
-name: Triathlon HQ
-tagline: Race countdown and training dashboard for your Umbrel
+name: Health Dashboard
+tagline: Garmin health, sleep, recovery, and body composition dashboard
 icon: https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-triathlon-hq/icon.png
 category: health
-version: "0.2.1"
+version: "0.3.0"
 port: 8477
 description: >-
-  Triathlon HQ is a personal training dashboard for preparing for a middle-distance triathlon.
-  It shows a race countdown, weekly swim-bike-run focus, readiness guidance, and next-step coaching prompts.
+  Health Dashboard is a personal Garmin health dashboard with a soft glass interface inspired by Vita.
+  It shows readiness, sleep, HRV, resting heart rate, steps, active minutes, and Garmin Index Scale body composition.
 
 
-  It connects to your existing Garmin-to-InfluxDB data on Umbrel and turns activities, sleep, HRV,
-  resting heart rate, body battery, VO2max, and weekly training load into a simple coaching view.
+  It connects to your existing Garmin-to-InfluxDB data on Umbrel and turns daily stats, sleep, HRV,
+  body battery, training load, and body composition into a compact health view.
 
 
   The app also exposes /api/summary so OpenClaw or other local tools can connect to the dashboard later.
@@ -24,7 +24,7 @@ repo: https://github.com/jocowhite/my-umbrel-apps
 support: https://github.com/jocowhite/my-umbrel-apps/issues
 gallery:
   - https://raw.githubusercontent.com/jocowhite/my-umbrel-apps/master/my-store-triathlon-hq/gallery.png
-releaseNotes: "Fix startup on Umbrel by embedding the dashboard server in docker-compose and removing the broken app bind mount."
+releaseNotes: "Rebuild the Triathlon HQ interface as a Vita-style Health Dashboard and add Garmin Index Scale body composition metrics."
 dependencies: []
 path: ""
 defaultUsername: ""

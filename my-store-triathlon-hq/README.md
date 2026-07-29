@@ -1,15 +1,14 @@
-# Triathlon HQ
+# Health Dashboard
 
-Personal Umbrel dashboard for Challenge Kaiserwinkl-Walchsee preparation.
+Personal Umbrel health dashboard for Garmin metrics from InfluxDB.
 
 ## What it shows
 
-- race countdown and current training phase
+- Vita-style glass dashboard UI
 - readiness score from Garmin sleep, HRV, resting HR, stress, body battery, and weekly training load
-- last-7-day swim / bike / run totals
-- coach focus/gap detection
-- latest health signals
-- recent activities table
+- sleep score, duration, and sleep stages
+- HRV trend, resting heart rate, steps, active minutes, and recovery factors
+- Garmin Index Scale body composition: weight, BMI, body fat, body water, muscle mass, and bone mass
 - `/api/summary` JSON endpoint for automation or future OpenClaw integrations
 
 ## InfluxDB
